@@ -1,0 +1,6 @@
+streamlit>=1.37
+python-dotenv>=1.0
+gspread>=6.0
+google-auth>=2.30
+requests>=2.32
+pandas>=2.2

@@ -1,0 +1,837 @@
+from dotenv import load_dotenv
+from pathlib import Path
+from datetime import datetime, timezone
+import json
+import os
+import time
+
+import streamlit as st
+
+import database
+from config import settings
+from google_sheets import get_worksheets
+from sourcing_engine import run_sourcing
+
+# ============================================================================
+# APP SETUP
+# ============================================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env", override=True)
+
+st.set_page_config(
+    page_title="nVentures Sourcing",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+database.init_db()
+
+# Bootstrap the first admin only if the account does not already exist.
+admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+admin_password = os.getenv("ADMIN_PASSWORD", "")
+
+if admin_email and admin_password:
+    database.ensure_admin(admin_email, admin_password)
+
+LOGO_PATH = BASE_DIR / "assets" / "nventures_logo.png"
+
+# ============================================================================
+# DARK nVENTURES UI
+# ============================================================================
+
+st.markdown(
+    """
+    <style>
+    :root {
+        --nv-bg: #080808;
+        --nv-panel: #111111;
+        --nv-panel-2: #151515;
+        --nv-border: #292929;
+        --nv-text: #f5f7fa;
+        --nv-muted: #9ca3af;
+        --nv-blue: #0b74ff;
+        --nv-blue-dark: #075dcc;
+    }
+
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    .main {
+        background: var(--nv-bg);
+        color: var(--nv-text);
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    #MainMenu,
+    footer {
+        visibility: hidden;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: #050505;
+        border-right: 1px solid #202020;
+    }
+
+    section[data-testid="stSidebar"] > div {
+        background: #050505;
+    }
+
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] small {
+        color: var(--nv-text);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6,
+    .stMarkdown, .stCaption,
+    p, label {
+        color: var(--nv-text);
+    }
+
+    .stCaption {
+        color: var(--nv-muted) !important;
+    }
+
+    /* Hero */
+    .nv-hero {
+        background: #050505;
+        border: 1px solid #262626;
+        border-radius: 16px;
+        padding: 30px 32px;
+        margin-bottom: 22px;
+        box-shadow: 0 12px 35px rgba(0,0,0,.22);
+    }
+
+    .nv-hero-title {
+        color: #ffffff;
+        font-size: 38px;
+        line-height: 1.05;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+    }
+
+    .nv-hero-subtitle {
+        color: #aeb6c2;
+        font-size: 15px;
+        margin-top: 10px;
+    }
+
+    /* Cards */
+    .nv-card {
+        background: var(--nv-panel);
+        border: 1px solid var(--nv-border);
+        border-radius: 13px;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+    }
+
+    .nv-card-title {
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 750;
+        margin-bottom: 7px;
+    }
+
+    .nv-card-value {
+        color: #ffffff;
+        font-size: 19px;
+        font-weight: 750;
+    }
+
+    .nv-card-text {
+        color: #aeb6c2;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .nv-blue-card {
+        background: #0d1824;
+        border: 1px solid #194d80;
+        border-radius: 13px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+    }
+
+    .nv-blue-title {
+        color: #69adff;
+        font-size: 14px;
+        font-weight: 750;
+    }
+
+    .nv-blue-value {
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: 800;
+        margin-top: 5px;
+    }
+
+    .nv-blue-text {
+        color: #b7c2d0;
+        font-size: 13px;
+        line-height: 1.5;
+        margin-top: 6px;
+    }
+
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        background: var(--nv-panel);
+        border: 1px solid var(--nv-border);
+        border-radius: 12px;
+        padding: 17px;
+    }
+
+    div[data-testid="stMetric"] label {
+        color: #9ca3af !important;
+    }
+
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #ffffff !important;
+    }
+
+    /* Inputs */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div,
+    div[data-baseweb="select"] > div {
+        background: var(--nv-panel-2);
+        border-color: #353535;
+        color: #ffffff;
+    }
+
+    input,
+    textarea {
+        color: #ffffff !important;
+        caret-color: #ffffff;
+    }
+
+    /* Buttons */
+    .stButton > button,
+    .stFormSubmitButton > button {
+        background: #151515;
+        color: #ffffff;
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        font-weight: 650;
+        min-height: 42px;
+    }
+
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {
+        border-color: var(--nv-blue);
+        color: #ffffff;
+    }
+
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primary"] {
+        background: var(--nv-blue);
+        border-color: var(--nv-blue);
+        color: #ffffff;
+        font-weight: 750;
+        min-height: 48px;
+    }
+
+    .stButton > button[kind="primary"]:hover,
+    .stFormSubmitButton > button[kind="primary"]:hover {
+        background: var(--nv-blue-dark);
+        border-color: var(--nv-blue-dark);
+    }
+
+    /* Alerts */
+    div[data-testid="stAlert"] {
+        background: #121212;
+        border: 1px solid #303030;
+        color: #f5f7fa;
+    }
+
+    div[data-testid="stAlert"] p {
+        color: #f5f7fa !important;
+    }
+
+    /* Expanders */
+    div[data-testid="stExpander"] {
+        background: #111111;
+        border: 1px solid #292929;
+        border-radius: 10px;
+    }
+
+    div[data-testid="stExpander"] summary {
+        color: #ffffff !important;
+    }
+
+    /* Dataframe */
+    div[data-testid="stDataFrame"] {
+        background: #111111;
+        border: 1px solid #292929;
+        border-radius: 10px;
+    }
+
+    hr {
+        border-color: #292929 !important;
+    }
+
+    /* Credit */
+    .nv-credit {
+        margin-top: 26px;
+        padding: 14px;
+        border: 1px solid #303030;
+        border-radius: 10px;
+        background: #0b0b0b;
+        text-align: center;
+    }
+
+    .nv-credit-small {
+        font-size: 12px;
+        color: #999999;
+        margin-bottom: 5px;
+    }
+
+    .nv-credit-name {
+        font-size: 14px;
+        font-weight: 750;
+        color: #ffffff;
+    }
+
+    .nv-credit-product {
+        font-size: 11px;
+        color: #777777;
+        margin-top: 5px;
+    }
+
+    /* Login */
+    .nv-login {
+        max-width: 560px;
+        margin: 70px auto 0 auto;
+        background: #0d0d0d;
+        border: 1px solid #282828;
+        border-radius: 16px;
+        padding: 30px;
+        box-shadow: 0 18px 55px rgba(0,0,0,.30);
+    }
+
+    .nv-login-title {
+        color: #ffffff;
+        text-align: center;
+        font-size: 31px;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        margin-top: 18px;
+    }
+
+    .nv-login-subtitle {
+        color: #9ca3af;
+        text-align: center;
+        font-size: 14px;
+        margin-top: 6px;
+        margin-bottom: 24px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============================================================================
+# LOGIN
+# ============================================================================
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if not st.session_state.user:
+    st.markdown('<div class="nv-login">', unsafe_allow_html=True)
+
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), use_container_width=True)
+    else:
+        st.markdown(
+            '<div style="text-align:center;color:white;font-size:36px;font-weight:800;">nVentures</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        '<div class="nv-login-title">Sourcing Intelligence</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="nv-login-subtitle">Private sourcing platform for the nVentures team.</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("login_form"):
+        email = st.text_input("Email", placeholder="you@company.com")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button(
+            "Sign in",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+        user = database.authenticate(email.strip().lower(), password)
+        if user:
+            st.session_state.user = user
+            st.rerun()
+        else:
+            st.error("Invalid email or password.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+user = st.session_state.user
+
+# ============================================================================
+# SIDEBAR
+# ============================================================================
+
+if LOGO_PATH.exists():
+    st.sidebar.image(str(LOGO_PATH), use_container_width=True)
+else:
+    st.sidebar.markdown("# nVentures")
+
+st.sidebar.divider()
+st.sidebar.caption(f"Signed in as {user['email']}")
+st.sidebar.caption(f"Role: {user['role']}")
+
+if st.sidebar.button("Sign out", use_container_width=True):
+    st.session_state.user = None
+    st.rerun()
+
+st.sidebar.divider()
+
+pages = ["Dashboard", "Run History"]
+if user["role"] == "admin":
+    pages.append("Admin")
+
+page = st.sidebar.radio("Navigate", pages)
+
+st.sidebar.markdown(
+    """
+    <div class="nv-credit">
+        <div class="nv-credit-small">Built by</div>
+        <div class="nv-credit-name">Pavara Kekulawala</div>
+        <div class="nv-credit-product">nVentures Sourcing Platform</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============================================================================
+# DASHBOARD
+# ============================================================================
+
+if page == "Dashboard":
+    st.markdown(
+        """
+        <div class="nv-hero">
+            <div class="nv-hero-title">Sourcing Intelligence</div>
+            <div class="nv-hero-subtitle">
+                AI-powered company discovery, research and investment sourcing.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Sourcing controls")
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        target = st.number_input(
+            "Target new companies",
+            min_value=1,
+            max_value=100,
+            value=25,
+            step=1,
+        )
+
+    with c2:
+        max_partners = st.number_input(
+            "Partners per run",
+            min_value=1,
+            max_value=50,
+            value=int(settings.max_partners),
+            step=1,
+        )
+
+    with c3:
+        max_research = st.number_input(
+            "Deep research limit",
+            min_value=1,
+            max_value=200,
+            value=int(settings.max_deep_research),
+            step=1,
+        )
+
+    st.markdown("### Investment criteria")
+
+    st.markdown(
+        f"""
+        <div class="nv-card">
+            <div class="nv-card-title">Current screening mandate</div>
+            <div class="nv-card-text">
+                <b>B2B:</b> required &nbsp; • &nbsp;
+                <b>Stage:</b> pre-seed / seed &nbsp; • &nbsp;
+                <b>Funding ceiling:</b> ${settings.max_total_funding:,.0f}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### System status")
+
+    openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
+    google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
+
+    s1, s2, s3 = st.columns(3)
+
+    with s1:
+        if openrouter_ready:
+            st.success("OpenRouter configured")
+        else:
+            st.error("OpenRouter key missing")
+
+    with s2:
+        if tavily_ready:
+            st.success("Tavily configured")
+        else:
+            st.error("Tavily key missing")
+
+    with s3:
+        if google_ready:
+            st.success("Google Sheets configured")
+        else:
+            st.error("Google service account missing")
+
+    st.divider()
+
+    if st.button(
+        "🚀 Start sourcing",
+        type="primary",
+        use_container_width=True,
+    ):
+        started = datetime.now(timezone.utc).isoformat()
+
+        progress = st.progress(0)
+        status = st.empty()
+
+        st.markdown("### Live log")
+
+        log_placeholder = st.empty()
+        log_buffer = []
+        last_render = [0.0]
+
+        # Streamlit repaints the whole element on every update, so redraw at
+        # most a few times a second. Bursty output (API retries) would
+        # otherwise spend more time rendering than sourcing.
+        LOG_VISIBLE_LINES = 300
+        LOG_MIN_REDRAW_SECONDS = 0.3
+
+        def render_log(force=False):
+            now = time.monotonic()
+            if not force and now - last_render[0] < LOG_MIN_REDRAW_SECONDS:
+                return
+            last_render[0] = now
+            log_placeholder.code(
+                "\n".join(log_buffer[-LOG_VISIBLE_LINES:]) or "Waiting...",
+                language="log",
+            )
+
+        def on_log(line):
+            log_buffer.append(line)
+            render_log()
+
+        render_log(force=True)
+
+        try:
+            status.info("Connecting to Google Sheets...")
+
+            (
+                _sh,
+                sourcing_ws,
+                partner_ws,
+                control_ws,
+                _partner_name,
+            ) = get_worksheets(
+                settings.spreadsheet_id,
+                settings.sourcing_tab,
+                settings.control_tab,
+                settings.partner_tab_candidates,
+            )
+
+            status.success("Google Sheets connected.")
+
+            def on_progress(value, message=""):
+                progress.progress(max(0, min(100, int(value))))
+                if message:
+                    status.write(message)
+
+            status.info(
+                "Sourcing engine is running. This can take several minutes "
+                "because companies are researched and verified individually."
+            )
+
+            report = run_sourcing(
+                sourcing_ws=sourcing_ws,
+                partner_ws=partner_ws,
+                control_ws=control_ws,
+                openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+                tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+                openrouter_model=settings.openrouter_model,
+                target_companies=int(target),
+                max_partners=int(max_partners),
+                max_deep_research=int(max_research),
+                max_candidates_per_partner=settings.max_candidates_per_partner,
+                max_total_funding=settings.max_total_funding,
+                max_team_size_warning=settings.max_team_size_warning,
+                tavily_timeout=settings.tavily_timeout,
+                openrouter_timeout=settings.openrouter_timeout,
+                max_tavily_results=settings.max_tavily_results,
+                max_research_chars=settings.max_research_chars,
+                request_delay=settings.request_delay,
+                progress_callback=on_progress,
+                log_callback=on_log,
+            )
+
+            finished = datetime.now(timezone.utc).isoformat()
+
+            # Normalize the report keys defensively so run history/database
+            # counts remain correct even if the engine wrapper changes.
+            report.setdefault("accepted", [])
+            report.setdefault("rejected", [])
+            report.setdefault("duplicates", [])
+            report.setdefault("partner_errors", [])
+            report.setdefault("accepted_details", [])
+
+            run_id = database.save_run(
+                user["email"],
+                started,
+                finished,
+                int(target),
+                report,
+            )
+
+            progress.progress(100)
+            render_log(force=True)
+            status.success(f"Run #{run_id} completed.")
+
+            st.download_button(
+                "Download run log",
+                "\n".join(log_buffer),
+                file_name=f"sourcing_run_{run_id}.log",
+                mime="text/plain",
+            )
+
+            accepted = report["accepted"]
+            rejected = report["rejected"]
+            duplicates = report["duplicates"]
+            errors = report["partner_errors"]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Added", len(accepted))
+            m2.metric("Duplicates", len(duplicates))
+            m3.metric("Rejected", len(rejected))
+            m4.metric("Partner errors", len(errors))
+
+            if accepted:
+                st.markdown("### New companies")
+                st.dataframe(
+                    report["accepted_details"] or accepted,
+                    use_container_width=True,
+                )
+            else:
+                st.info("No new companies were accepted during this run.")
+
+            if rejected:
+                with st.expander(f"Rejected ({len(rejected)})"):
+                    st.write(rejected)
+
+            if duplicates:
+                with st.expander(f"Duplicates ({len(duplicates)})"):
+                    st.write(duplicates)
+
+            if errors:
+                with st.expander(f"Partner/API errors ({len(errors)})"):
+                    st.write(errors)
+
+            with st.expander("Full run report"):
+                # The log is already on screen and can be megabytes; showing it
+                # again inside st.json makes the widget crawl.
+                st.json({k: v for k, v in report.items() if k != "log"})
+
+        except Exception as exc:
+            render_log(force=True)
+            st.error("The sourcing run failed.")
+            st.exception(exc)
+
+            if log_buffer:
+                st.download_button(
+                    "Download partial run log",
+                    "\n".join(log_buffer),
+                    file_name="sourcing_run_failed.log",
+                    mime="text/plain",
+                )
+
+# ============================================================================
+# RUN HISTORY
+# ============================================================================
+
+elif page == "Run History":
+    st.markdown(
+        """
+        <div class="nv-hero">
+            <div class="nv-hero-title">Run History</div>
+            <div class="nv-hero-subtitle">
+                Previous sourcing runs performed by the nVentures team.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    runs = database.list_runs(100)
+
+    if not runs:
+        st.info("No sourcing runs have been recorded yet.")
+    else:
+        import pandas as pd
+
+        df = pd.DataFrame(runs)
+
+        preferred = [
+            "id",
+            "started_at",
+            "finished_at",
+            "user_email",
+            "target",
+            "accepted_count",
+            "duplicate_count",
+            "rejected_count",
+            "partner_error_count",
+            "status",
+        ]
+
+        display_cols = [c for c in preferred if c in df.columns]
+
+        st.dataframe(
+            df[display_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown("### Open run")
+
+        run_ids = [int(r["id"]) for r in runs]
+        selected_id = st.selectbox("Select a run", run_ids)
+
+        selected = database.get_run(selected_id)
+
+        if selected:
+            st.markdown(
+                f"""
+                <div class="nv-card">
+                    <div class="nv-card-title">Run #{selected['id']}</div>
+                    <div class="nv-card-text">
+                        <b>User:</b> {selected['user_email']}<br>
+                        <b>Started:</b> {selected['started_at']}<br>
+                        <b>Finished:</b> {selected['finished_at']}<br>
+                        <b>Status:</b> {selected['status']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            try:
+                st.json(json.loads(selected["report_json"]))
+            except Exception:
+                st.code(selected.get("report_json", ""))
+
+# ============================================================================
+# ADMIN
+# ============================================================================
+
+elif page == "Admin":
+    if user["role"] != "admin":
+        st.error("Admin access required.")
+        st.stop()
+
+    st.markdown(
+        """
+        <div class="nv-hero">
+            <div class="nv-hero-title">Team Administration</div>
+            <div class="nv-hero-subtitle">
+                Create and manage accounts for the sourcing team.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Create team member")
+
+    with st.form("new_user_form"):
+        new_email = st.text_input("Team member email")
+        new_password = st.text_input("Temporary password", type="password")
+        new_role = st.selectbox("Role", ["user", "admin"])
+
+        submitted = st.form_submit_button(
+            "Create user",
+            type="primary",
+        )
+
+        if submitted:
+            email_clean = new_email.strip().lower()
+
+            if not email_clean:
+                st.error("Email is required.")
+            elif not new_password:
+                st.error("Password is required.")
+            else:
+                try:
+                    database.create_user(
+                        email_clean,
+                        new_password,
+                        new_role,
+                    )
+                    st.success(f"Created {email_clean}.")
+                except Exception as exc:
+                    st.error(f"Could not create user: {exc}")
+
+    st.markdown("### Existing users")
+
+    users = database.list_users()
+
+    if users:
+        st.dataframe(
+            users,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No users found.")
+
+    st.markdown("### Reset a password")
+
+    with st.form("reset_password_form"):
+        reset_email = st.text_input("Account email")
+        reset_password = st.text_input("New password", type="password")
+
+        reset_submitted = st.form_submit_button("Reset password")
+
+        if reset_submitted:
+            email_clean = reset_email.strip().lower()
+
+            if not email_clean or not reset_password:
+                st.error("Email and new password are required.")
+            elif database.reset_password(email_clean, reset_password):
+                st.success("Password reset successfully.")
+            else:
+                st.error("No active account exists with that email.")
