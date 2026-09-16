@@ -465,7 +465,7 @@ def call_llm(
     # Keep requests within a low/free OpenRouter credit balance.
     # OpenRouter rejects the entire request if max_tokens exceeds the
     # remaining affordable completion budget.
-    max_tokens = min(int(max_tokens or 0), 1000)
+    max_tokens = min(int(max_tokens or 0), 1400)
     errors = []
 
     for model in models:
@@ -486,6 +486,10 @@ def call_llm(
             ],
             "temperature": 0.1,
             "max_tokens": max_tokens,
+            # All nVentures LLM prompts request JSON. MiniMax M3 supports
+            # structured JSON output through OpenRouter, which is safer than
+            # relying on free-form text being returned in message.content.
+            "response_format": {"type": "json_object"},
         }
 
         log(f"      OpenRouter request: {model}")
@@ -547,16 +551,46 @@ def call_llm(
                 log("      Trying next model...")
                 continue
 
-            content = choices[0].get("message", {}).get(
-                "content",
-                "",
-            )
+            message = choices[0].get("message", {}) or {}
+            content = message.get("content", "")
+
+            # Some OpenRouter providers return structured content blocks
+            # instead of a plain string. Normalize those into text.
+            if isinstance(content, list):
+                parts = []
+                for item in content:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict):
+                        part_text = item.get("text") or item.get("content")
+                        if part_text:
+                            parts.append(str(part_text))
+                content = "\n".join(parts).strip()
+
+            if isinstance(content, dict):
+                content = content.get("text") or content.get("content") or ""
+
+            content = str(content).strip() if content is not None else ""
 
             if not content:
-                error_text = f"{model}: empty content"
+                finish_reason = choices[0].get("finish_reason", "")
+                refusal = message.get("refusal", "")
+                reasoning = message.get("reasoning", "")
+
+                # Reasoning is diagnostic only. Do not feed it into the JSON
+                # parser because it is not the requested final answer.
+                error_text = (
+                    f"{model}: empty content"
+                    f" (finish_reason={finish_reason!r}"
+                    f", refusal={bool(refusal)}"
+                    f", reasoning_present={bool(reasoning)})"
+                )
                 errors.append(error_text)
                 log(f"      {error_text}")
-                log("      Trying next model...")
+                log(
+                    "      Full response contained no usable final text; "
+                    "trying the next model/provider."
+                )
                 continue
 
             log(f"      OpenRouter response: {model} successful")
@@ -1620,7 +1654,7 @@ def discover_partners(
             api_key=openrouter_api_key,
             models=models,
             timeout=openrouter_timeout,
-            max_tokens=1100,
+            max_tokens=1400,
             log=log,
         )
 
@@ -2129,7 +2163,7 @@ def run_sourcing(
             extraction = safe_json_parse(
                 llm(
                     candidate_prompt(partner_name, portfolio_text),
-                    max_tokens=900,
+                    max_tokens=1400,
                 )
             )
 
@@ -2203,7 +2237,7 @@ def run_sourcing(
                             research_prompt(
                                 candidate_name, initial_context, deep_text
                             ),
-                            max_tokens=1100,
+                            max_tokens=1400,
                         )
                     )
                 )
@@ -2241,7 +2275,7 @@ def run_sourcing(
                 verification = safe_json_parse(
                     llm(
                         verification_prompt(researched_name, deep_text),
-                        max_tokens=650,
+                        max_tokens=900,
                     )
                 )
 
@@ -2408,3 +2442,4 @@ def run_sourcing(
         "partner_breakdown": partner_stats,
         "log": log_lines,
     }
+
