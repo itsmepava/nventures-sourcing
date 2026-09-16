@@ -443,6 +443,10 @@ def call_llm(
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is missing.")
 
+    # Keep requests within a low/free OpenRouter credit balance.
+    # OpenRouter rejects the entire request if max_tokens exceeds the
+    # remaining affordable completion budget.
+    max_tokens = min(int(max_tokens or 0), 1100)
     errors = []
 
     for model in models:
@@ -1541,7 +1545,7 @@ def discover_partners(
     *,
     openrouter_api_key,
     tavily_api_key,
-    openrouter_model="minimax/minimax-m3",
+    openrouter_model="openrouter/free",
     countries=None,
     partner_types=None,
     max_per_search=12,
@@ -1587,7 +1591,7 @@ def discover_partners(
             api_key=openrouter_api_key,
             models=models,
             timeout=openrouter_timeout,
-            max_tokens=5000,
+            max_tokens=1100,
             log=log,
         )
 
@@ -1896,7 +1900,7 @@ def run_sourcing(
     control_ws,
     openrouter_api_key,
     tavily_api_key,
-    openrouter_model="minimax/minimax-m3",
+    openrouter_model="openrouter/free",
     target_companies=25,
     max_partners=12,
     max_candidates_per_partner=10,
@@ -2096,7 +2100,7 @@ def run_sourcing(
             extraction = safe_json_parse(
                 llm(
                     candidate_prompt(partner_name, portfolio_text),
-                    max_tokens=4000,
+                    max_tokens=900,
                 )
             )
 
@@ -2170,7 +2174,7 @@ def run_sourcing(
                             research_prompt(
                                 candidate_name, initial_context, deep_text
                             ),
-                            max_tokens=5000,
+                            max_tokens=1100,
                         )
                     )
                 )
@@ -2208,7 +2212,7 @@ def run_sourcing(
                 verification = safe_json_parse(
                     llm(
                         verification_prompt(researched_name, deep_text),
-                        max_tokens=3000,
+                        max_tokens=650,
                     )
                 )
 
