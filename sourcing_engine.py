@@ -54,6 +54,39 @@ def normalize_text(value):
     return re.sub(r"\s+", " ", value).strip()
 
 
+def safe_json_parse(text):
+    """Safely parse JSON returned by the LLM."""
+    if not text:
+        raise ValueError("Empty LLM response.")
+
+    cleaned = str(text).strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    start = cleaned.find("[")
+    end = cleaned.rfind("]")
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("Could not parse valid JSON from LLM response.")
+
+
 def normalize_header(value):
     return re.sub(r"\s+", " ", normalize_text(value).lower()).strip()
 
@@ -870,7 +903,8 @@ def funding_check(record, research_text, max_total_funding):
     return True, ""
 
 
-def maturity_flag(record, research_text, max_total_funding):
+def maturity_flag(record, research_text, max_total_funding=None):
+    """Return a warning only for clearly mature/growth-stage evidence."""
     combined = " ".join(
         [
             normalize_text(record.get("Stage", "")),
@@ -880,19 +914,12 @@ def maturity_flag(record, research_text, max_total_funding):
     )
 
     combined_lower = combined.lower()
-
     warnings = []
 
-    if _find_term_match(combined, combined_lower, "series a"):
-        warnings.append("mentions 'Series A'")
-    if _find_term_match(combined, combined_lower, "series b"):
-        warnings.append("mentions 'Series B'")
-
-    values = parse_money_values(combined)
-    if values:
-        maximum = max(values)
-        if maximum > max_total_funding:
-            warnings.append(f"funding around ${maximum:,.0f}")
+    for term in MATURE_TERMS:
+        snippet = _find_term_match(combined, combined_lower, term)
+        if snippet:
+            warnings.append(f"mentions '{term}'")
 
     if warnings:
         return "Maturity check flagged: " + "; ".join(warnings) + "."
@@ -1071,10 +1098,6 @@ def build_sheet_row(headers, record, partner_name, verification, maturity_note):
 
     if verification.get("b2b", False):
         reason_parts.append("B2B")
-    if verification.get("early_stage", False):
-        reason_parts.append("early-stage")
-    if verification.get("funding_within_limit", False):
-        reason_parts.append("funding within threshold")
 
     verification_reason = normalize_text(verification.get("reason", ""))
     if verification_reason:
@@ -1484,7 +1507,6 @@ def run_sourcing(
     max_partners = int(max_partners)
     max_candidates_per_partner = int(max_candidates_per_partner)
     max_deep_research = int(max_deep_research)
-    max_total_funding = float(max_total_funding)
     request_delay = float(request_delay)
 
     log_lines = []
@@ -1762,19 +1784,6 @@ def run_sourcing(
                     skipped_duplicates.append(researched_name)
                     continue
 
-                # --- deterministic funding / maturity filter ---
-                funding_ok, funding_reason = funding_check(
-                    record, deep_text, max_total_funding
-                )
-
-                if not funding_ok:
-                    log("  REJECTED - funding/maturity.")
-                    log(f"  {funding_reason}")
-                    rejected_candidates.append(
-                        (researched_name, funding_reason)
-                    )
-                    continue
-
                 # --- AI verification ---
                 log("  Running final qualification...")
 
@@ -1786,10 +1795,6 @@ def run_sourcing(
                 )
 
                 b2b = verification.get("b2b", False) is True
-                early_stage = verification.get("early_stage", False) is True
-                funding_within_limit = (
-                    verification.get("funding_within_limit", False) is True
-                )
                 active_company = (
                     verification.get("active_company", False) is True
                 )
@@ -1803,10 +1808,6 @@ def run_sourcing(
 
                 if require_b2b and not b2b:
                     failures.append("B2B requirement not verified")
-                if require_early_stage and not early_stage:
-                    failures.append("Early-stage requirement not verified")
-                if not funding_within_limit:
-                    failures.append("Funding requirement not satisfied")
                 if not active_company:
                     failures.append("Active-company status not verified")
                 if too_mature:
