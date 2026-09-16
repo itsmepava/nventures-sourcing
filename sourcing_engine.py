@@ -2442,4 +2442,3 @@ def run_sourcing(
         "partner_breakdown": partner_stats,
         "log": log_lines,
     }
-
