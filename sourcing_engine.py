@@ -1418,14 +1418,17 @@ def append_and_verify_row(worksheet, row, headers, company_name, log=print):
 # ============================================================================
 
 SOUTH_ASIA_COUNTRIES = [
-    "India",
-    "Sri Lanka",
-    "Bangladesh",
-    "Pakistan",
-    "Nepal",
-    "Bhutan",
-    "Maldives",
-    "Afghanistan",
+                "India",
+                "Sri Lanka",
+                "Bangladesh",
+                "Pakistan",
+                "Nepal",
+                "Bhutan",
+                "Maldives",
+                "Afghanistan",
+                'Singapore",
+                "Vietnam",
+                "Indonesia"
 ]
 
 PARTNER_TYPE_QUERIES = {
