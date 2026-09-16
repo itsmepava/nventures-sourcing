@@ -717,6 +717,9 @@ elif page == "Partner Discovery":
                 "Bhutan",
                 "Maldives",
                 "Afghanistan",
+                'Singapore",
+                "Vietnam",
+                "Indonesia"
             ],
             default=[
                 "India",
@@ -724,6 +727,12 @@ elif page == "Partner Discovery":
                 "Bangladesh",
                 "Pakistan",
                 "Nepal",
+                "Bhutan",
+                "Maldives",
+                "Afghanistan",
+                'Singapore",
+                "Vietnam",
+                "Indonesia"
             ],
         )
 
