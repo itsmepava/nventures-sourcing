@@ -220,8 +220,8 @@ def http_request_with_retry(
     *,
     headers=None,
     json_body=None,
-    timeout=90,
-    max_attempts=5,
+    timeout=60,
+    max_attempts=3,
     label="HTTP request",
     log=print,
 ):
@@ -229,6 +229,11 @@ def http_request_with_retry(
 
     for attempt in range(1, max_attempts + 1):
         try:
+            log(
+                f"      {label}: attempt "
+                f"{attempt}/{max_attempts}"
+            )
+
             response = requests.request(
                 method,
                 url,
@@ -237,49 +242,130 @@ def http_request_with_retry(
                 timeout=timeout,
             )
 
+            # ---------------------------------------------------------
+            # SUCCESS
+            # ---------------------------------------------------------
+
             if response.status_code < 400:
                 return response
 
-            if response.status_code in {429, 500, 502, 503, 504}:
+            # ---------------------------------------------------------
+            # RETRYABLE HTTP ERRORS
+            # ---------------------------------------------------------
+
+            if response.status_code in {
+                429,
+                500,
+                502,
+                503,
+                504,
+            }:
                 retry_after = response.headers.get("Retry-After")
 
                 if retry_after:
                     try:
                         wait_seconds = float(retry_after)
                     except (TypeError, ValueError):
-                        wait_seconds = min(60, 2 ** attempt)
+                        wait_seconds = min(30, 2 ** attempt)
                 else:
-                    wait_seconds = min(60, 2 ** attempt)
+                    wait_seconds = min(30, 2 ** attempt)
 
-                wait_seconds += random.uniform(0.25, 1.25)
-
-                log(
-                    f"      {label}: HTTP {response.status_code}. "
-                    f"Retrying in {wait_seconds:.1f}s..."
-                )
+                wait_seconds += random.uniform(0.25, 1.0)
 
                 last_error = RuntimeError(
-                    f"{label} returned HTTP {response.status_code}"
+                    f"{label} returned HTTP "
+                    f"{response.status_code}"
                 )
 
-                time.sleep(wait_seconds)
-                continue
+                if attempt < max_attempts:
+                    log(
+                        f"      {label}: HTTP "
+                        f"{response.status_code}. "
+                        f"Retrying in "
+                        f"{wait_seconds:.1f}s..."
+                    )
+
+                    time.sleep(wait_seconds)
+                    continue
+
+                log(
+                    f"      {label}: HTTP "
+                    f"{response.status_code} after "
+                    f"{max_attempts} attempts."
+                )
+
+                break
+
+            # ---------------------------------------------------------
+            # NON-RETRYABLE HTTP ERROR
+            # ---------------------------------------------------------
 
             raise RuntimeError(
-                f"{label} failed with HTTP {response.status_code}:\n"
+                f"{label} failed with HTTP "
+                f"{response.status_code}:\n"
                 f"{response.text[:3000]}"
             )
 
+        except requests.Timeout as error:
+            last_error = error
+
+            log(
+                f"      {label}: TIMEOUT on attempt "
+                f"{attempt}/{max_attempts}."
+            )
+
+            if attempt < max_attempts:
+                wait_seconds = 2 + random.uniform(0.25, 1.0)
+
+                log(
+                    f"      Retrying in "
+                    f"{wait_seconds:.1f}s..."
+                )
+
+                time.sleep(wait_seconds)
+
+        except requests.ConnectionError as error:
+            last_error = error
+
+            log(
+                f"      {label}: CONNECTION ERROR on "
+                f"attempt {attempt}/{max_attempts}."
+            )
+
+            if attempt < max_attempts:
+                wait_seconds = 2 + random.uniform(0.25, 1.0)
+
+                log(
+                    f"      Retrying in "
+                    f"{wait_seconds:.1f}s..."
+                )
+
+                time.sleep(wait_seconds)
+
         except requests.RequestException as error:
             last_error = error
-            wait_seconds = min(60, 2 ** attempt) + random.uniform(0.25, 1.25)
-            log(f"      {label}: network error. Retrying in {wait_seconds:.1f}s...")
-            time.sleep(wait_seconds)
+
+            log(
+                f"      {label}: network error on "
+                f"attempt {attempt}/{max_attempts}: "
+                f"{error}"
+            )
+
+            if attempt < max_attempts:
+                wait_seconds = 2 + random.uniform(0.25, 1.0)
+
+                log(
+                    f"      Retrying in "
+                    f"{wait_seconds:.1f}s..."
+                )
+
+                time.sleep(wait_seconds)
 
     raise RuntimeError(
-        f"{label} failed after {max_attempts} attempts: {last_error}"
+        f"{label} failed after "
+        f"{max_attempts} attempts: "
+        f"{last_error}"
     )
-
 
 # ============================================================================
 # OPENROUTER
@@ -312,7 +398,15 @@ def _is_data_policy_error(text):
     return "data policy" in text or "free model publication" in text
 
 
-def call_llm(prompt, *, api_key, models, timeout, max_tokens=1800, log=print):
+def call_llm(
+    prompt,
+    *,
+    api_key,
+    models,
+    timeout,
+    max_tokens=1800,
+    log=print,
+):
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is missing.")
 
@@ -328,10 +422,17 @@ def call_llm(prompt, *, api_key, models, timeout, max_tokens=1800, log=print):
 
         body = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
             "temperature": 0.1,
             "max_tokens": max_tokens,
         }
+
+        log(f"      OpenRouter request: {model}")
 
         try:
             response = http_request_with_retry(
@@ -349,6 +450,7 @@ def call_llm(prompt, *, api_key, models, timeout, max_tokens=1800, log=print):
 
             if "error" in data:
                 error = data["error"]
+
                 if isinstance(error, dict):
                     code = error.get("code")
                     message = error.get("message")
@@ -357,77 +459,79 @@ def call_llm(prompt, *, api_key, models, timeout, max_tokens=1800, log=print):
                     message = str(error)
 
                 if _is_data_policy_error(message):
-                    log(f"      {model}: blocked by data policy - stopping.")
+                    log(
+                        f"      {model}: blocked by data policy - stopping."
+                    )
                     raise RuntimeError(DATA_POLICY_HELP)
 
-                errors.append(f"{model}: {code} - {message}")
+                error_text = f"{model}: {code} - {message}"
+                errors.append(error_text)
+
+                log(f"      OpenRouter error: {error_text}")
+                log(f"      Trying next model...")
+
                 continue
 
             choices = data.get("choices", [])
+
             if not choices:
-                errors.append(f"{model}: no choices returned")
+                error_text = f"{model}: no choices returned"
+                errors.append(error_text)
+                log(f"      {error_text}")
+                log("      Trying next model...")
                 continue
 
-            content = choices[0].get("message", {}).get("content", "")
+            content = choices[0].get("message", {}).get(
+                "content",
+                "",
+            )
+
             if not content:
-                errors.append(f"{model}: empty content")
+                error_text = f"{model}: empty content"
+                errors.append(error_text)
+                log(f"      {error_text}")
+                log("      Trying next model...")
                 continue
+
+            log(f"      OpenRouter response: {model} successful")
 
             return content
 
         except RuntimeError as error:
-            # A non-retryable HTTP error (e.g. 404) from http_request_with_retry
-            # lands here as a RuntimeError whose text includes the response
-            # body. Every ':free' model fails with the identical data-policy
-            # message in that case, so stop immediately instead of grinding
-            # through the rest of the fallback chain for no benefit.
             if _is_data_policy_error(error):
-                log(f"      {model}: blocked by data policy - stopping.")
+                log(
+                    f"      {model}: blocked by data policy - stopping."
+                )
                 raise RuntimeError(DATA_POLICY_HELP) from error
 
-            errors.append(f"{model}: {error}")
-            log(f"      Model failed: {model}")
+            error_text = f"{model}: {error}"
+            errors.append(error_text)
+
+            log(f"      OpenRouter request failed: {model}")
             log(f"      {error}")
+            log("      Trying next model...")
+
             continue
 
-        except Exception as error:  # noqa: BLE001 - fall through to next model
-            errors.append(f"{model}: {error}")
-            log(f"      Model failed: {model}")
+        except Exception as error:  # noqa: BLE001
+            error_text = f"{model}: {error}"
+            errors.append(error_text)
+
+            log(f"      Unexpected OpenRouter failure: {model}")
             log(f"      {error}")
+            log("      Trying next model...")
+
             continue
 
-    raise RuntimeError("All OpenRouter models failed.\n" + "\n".join(errors))
+    error_message = (
+        "All OpenRouter models failed.\n"
+        + "\n".join(errors)
+    )
 
+    log("      ALL OPENROUTER MODELS FAILED")
+    log(error_message)
 
-def safe_json_parse(text):
-    if isinstance(text, dict):
-        return text
-    if not text:
-        return {}
-
-    text = str(text).strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
-
-    try:
-        result = json.loads(text)
-        if isinstance(result, dict):
-            return result
-    except (ValueError, TypeError):
-        pass
-
-    start = text.find("{")
-    end = text.rfind("}")
-
-    if start >= 0 and end > start:
-        try:
-            result = json.loads(text[start:end + 1])
-            if isinstance(result, dict):
-                return result
-        except (ValueError, TypeError):
-            pass
-
-    return {}
+    raise RuntimeError(error_message)
 
 
 # ============================================================================
