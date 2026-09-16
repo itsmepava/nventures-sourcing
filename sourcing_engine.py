@@ -1720,7 +1720,12 @@ def discover_partners(
                     "type": normalize_text(raw.get("type", "")),
                     "country": normalize_text(raw.get("country", "")),
                     "city": normalize_text(raw.get("city", "")),
-                    "website": normalize_text(raw.get("website", "")),
+                    "website": normalize_text(
+                        raw.get("website", "")
+                        or raw.get("portfolio", "")
+                        or raw.get("portfolio_url", "")
+                        or raw.get("company_portfolio", "")
+                    ),
                     "linkedin": normalize_text(raw.get("linkedin", "")),
                     "investment_focus": normalize_text(
                         raw.get("investment_focus", "")
@@ -1745,6 +1750,36 @@ def discover_partners(
 
                 if not record["name"]:
                     continue
+
+                # Recover the official partner website from Tavily when the
+                # model omitted it. Exclude common directories/social sites.
+                if not record["website"]:
+                    name_terms = [
+                        term.lower()
+                        for term in re.findall(r"[A-Za-z0-9]+", record["name"])
+                        if len(term) >= 3
+                    ]
+                    fallback_urls = []
+                    for search_result in result.get("results", []):
+                        url = normalize_text(search_result.get("url", ""))
+                        title = normalize_text(search_result.get("title", ""))
+                        content = normalize_text(search_result.get("content", ""))
+                        if not url or not re.match(r"^https?://", url, re.I):
+                            continue
+                        lowered_url = url.lower()
+                        if any(domain in lowered_url for domain in (
+                            "linkedin.com", "facebook.com", "instagram.com",
+                            "twitter.com", "x.com", "crunchbase.com",
+                            "pitchbook.com", "tracxn.com", "wikipedia.org",
+                        )):
+                            continue
+                        haystack = f"{title} {content} {url}".lower()
+                        score = sum(1 for term in name_terms if term in haystack)
+                        fallback_urls.append((score, url))
+
+                    if fallback_urls:
+                        fallback_urls.sort(key=lambda item: (-item[0], item[1]))
+                        record["website"] = fallback_urls[0][1]
 
                 name_key = _partner_record_key(record["name"])
                 domain = normalize_domain(record["website"])
