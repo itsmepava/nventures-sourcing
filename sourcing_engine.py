@@ -12,7 +12,7 @@ What the engine does:
   - Picks partners from the Partner sheet (least recently sourced first)
   - Extracts portfolio candidates via Tavily + OpenRouter
   - Researches each candidate
-  - Enforces B2B / early-stage / funding rules
+  - Enforces B2B / active-company / maturity rules
   - Deduplicates against Google Sheets and within the run
   - Writes accepted companies immediately and reads the row back to verify
   - Continues when an individual partner or API call fails
@@ -1345,6 +1345,424 @@ def append_and_verify_row(worksheet, row, headers, company_name, log=print):
     log(f"      Company verified: {actual_company}")
 
     return insert_at
+
+# ============================================================================
+# PARTNER DISCOVERY
+# ============================================================================
+
+SOUTH_ASIA_COUNTRIES = [
+    "India",
+    "Sri Lanka",
+    "Bangladesh",
+    "Pakistan",
+    "Nepal",
+    "Bhutan",
+    "Maldives",
+    "Afghanistan",
+]
+
+PARTNER_TYPE_QUERIES = {
+    "Venture Capital": "venture capital VC funds",
+    "Accelerator": "startup accelerators",
+    "Angel Syndicate / Angel Network": "angel syndicates angel networks",
+    "Incubator": "startup incubators",
+    "Seed Fund": "seed funds",
+    "Corporate Venture Capital": "corporate venture capital CVC",
+    "Family Office": "family offices startup investors",
+}
+
+
+def partner_discovery_prompt(research_text, countries, partner_types):
+    return (
+        "You are an investor-relations research analyst helping nVentures build "
+        "a South Asia co-investor and ecosystem partner database.\n\n"
+        "COUNTRIES:\n"
+        + ", ".join(countries)
+        + "\n\nPARTNER TYPES:\n"
+        + ", ".join(partner_types)
+        + "\n\n"
+        "Use ONLY the supplied web research. Identify real, currently operating "
+        "investment/ecosystem organizations whose own base/headquarters is in "
+        "one of the requested countries. Do not list portfolio companies, "
+        "individual angel investors, media companies, directories, or generic "
+        "service providers as partners.\n\n"
+        "A partner can be a VC, accelerator, angel syndicate/network, incubator, "
+        "seed fund, CVC, or family office that actively works with startups.\n\n"
+        "Return ONLY valid JSON in this exact shape:\n"
+        "{\n"
+        '  "partners": [\n'
+        "    {\n"
+        '      "name": "",\n'
+        '      "type": "",\n'
+        '      "country": "",\n'
+        '      "city": "",\n'
+        '      "website": "",\n'
+        '      "linkedin": "",\n'
+        '      "investment_focus": "",\n'
+        '      "stage_focus": "",\n'
+        '      "typical_check": "",\n'
+        '      "portfolio_examples": "",\n'
+        '      "recent_activity": "",\n'
+        '      "reason_relevant": "",\n'
+        '      "confidence": "high"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Important:\n"
+        "- Prefer the organization's official website when available.\n"
+        "- Do not invent a website, LinkedIn URL, check size, portfolio, or "
+        "investment stage.\n"
+        '- Missing information must be "".\n'
+        '- Confidence must be high, medium, or low.\n\n'
+        "WEB RESEARCH:\n"
+        + research_text
+    )
+
+
+def _partner_record_key(name):
+    return normalize_company_name(name)
+
+
+def build_existing_partner_indexes(worksheet):
+    values = worksheet.get_all_values()
+    indexes = {"names": set(), "domains": set(), "linkedin": set()}
+
+    if not values:
+        return indexes
+
+    headers = values[0]
+    first_idx, _ = build_header_index(headers)
+
+    name_col = (
+        first_idx.get(normalize_header("Company Name"))
+        or first_idx.get(normalize_header("Partner Name"))
+        or first_idx.get(normalize_header("Name"))
+    )
+    website_col = (
+        first_idx.get(normalize_header("Company Portfolio"))
+        or first_idx.get(normalize_header("Portfolio"))
+        or first_idx.get(normalize_header("Website"))
+        or first_idx.get(normalize_header("Company Website"))
+    )
+    linkedin_col = (
+        first_idx.get(normalize_header("Company LinkedIn"))
+        or first_idx.get(normalize_header("LinkedIn"))
+        or first_idx.get(normalize_header("LinkedIn URL"))
+    )
+
+    for row in values[1:]:
+        if name_col and len(row) >= name_col:
+            key = _partner_record_key(row[name_col - 1])
+            if key:
+                indexes["names"].add(key)
+
+        if website_col and len(row) >= website_col:
+            domain = normalize_domain(row[website_col - 1])
+            if domain:
+                indexes["domains"].add(domain)
+
+        if linkedin_col and len(row) >= linkedin_col:
+            linkedin = normalize_linkedin(row[linkedin_col - 1])
+            if linkedin:
+                indexes["linkedin"].add(linkedin)
+
+    return indexes
+
+
+def partner_already_exists(record, indexes):
+    name = _partner_record_key(record.get("name", ""))
+    domain = normalize_domain(record.get("website", ""))
+    linkedin = normalize_linkedin(record.get("linkedin", ""))
+
+    return (
+        (name and name in indexes["names"])
+        or (domain and domain in indexes["domains"])
+        or (linkedin and linkedin in indexes["linkedin"])
+    )
+
+
+def build_partner_sheet_row(headers, record):
+    row = [""] * len(headers)
+    first_idx, _ = build_header_index(headers)
+
+    aliases = {
+        "name": ["Company Name", "Partner Name", "Name"],
+        "website": [
+            "Company Portfolio",
+            "Portfolio",
+            "Portfolio URL",
+            "Website",
+            "Company Website",
+        ],
+        "linkedin": ["Company LinkedIn", "LinkedIn", "LinkedIn URL"],
+        "type": ["Type", "Partner Type", "Investor Type", "Category"],
+        "country": ["Country", "HQ Country", "Headquarters Country"],
+        "city": ["City", "Headquarters", "HQ"],
+        "investment_focus": [
+            "Investment Focus",
+            "Sector Focus",
+            "Focus",
+            "Investment Thesis",
+        ],
+        "stage_focus": ["Stage", "Stage Focus", "Investment Stage"],
+        "typical_check": ["Typical Check", "Check Size", "Ticket Size"],
+        "portfolio_examples": [
+            "Portfolio Examples",
+            "Portfolio Companies",
+            "Notable Portfolio",
+        ],
+        "recent_activity": ["Recent Activity", "Recent Investments", "Activity"],
+        "reason_relevant": [
+            "nVentures Relevance",
+            "Relevance",
+            "Reason",
+            "Notes",
+        ],
+    }
+
+    for key, possible_headers in aliases.items():
+        value = normalize_text(record.get(key, ""))
+        if not value:
+            continue
+
+        for header in possible_headers:
+            col = first_idx.get(normalize_header(header))
+            if col:
+                row[col - 1] = value
+                break
+
+    # Existing sourcing engine expects a usable portfolio field. If the
+    # partner sheet has that column, the official website is a better default
+    # than leaving it blank.
+    return row
+
+
+def discover_partners(
+    *,
+    openrouter_api_key,
+    tavily_api_key,
+    openrouter_model="minimax/minimax-m3",
+    countries=None,
+    partner_types=None,
+    max_per_search=12,
+    tavily_timeout=60,
+    openrouter_timeout=90,
+    max_tavily_results=8,
+    max_research_chars=12000,
+    request_delay=0.5,
+    progress_callback=None,
+    log_callback=None,
+):
+    """Discover South Asia investor/ecosystem partners without changing Sheets."""
+
+    countries = countries or SOUTH_ASIA_COUNTRIES
+    partner_types = partner_types or list(PARTNER_TYPE_QUERIES)
+
+    countries = [normalize_text(x) for x in countries if normalize_text(x)]
+    partner_types = [normalize_text(x) for x in partner_types if normalize_text(x)]
+
+    if not countries:
+        raise ValueError("Select at least one country.")
+    if not partner_types:
+        raise ValueError("Select at least one partner type.")
+
+    log_lines = []
+
+    def log(message=""):
+        stamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        text = f"[{stamp}] {message}"
+        log_lines.append(text)
+        print(text, flush=True)
+        if log_callback:
+            try:
+                log_callback(text)
+            except Exception:
+                pass
+
+    models = build_model_order(openrouter_model)
+
+    def llm(prompt):
+        return call_llm(
+            prompt,
+            api_key=openrouter_api_key,
+            models=models,
+            timeout=openrouter_timeout,
+            max_tokens=5000,
+            log=log,
+        )
+
+    def search(query):
+        return tavily_search(
+            query,
+            api_key=tavily_api_key,
+            timeout=tavily_timeout,
+            max_results=max_tavily_results,
+            log=log,
+        )
+
+    search_jobs = [
+        (country, partner_type)
+        for country in countries
+        for partner_type in partner_types
+    ]
+
+    discovered = []
+    seen = {"names": set(), "domains": set(), "linkedin": set()}
+    total = max(1, len(search_jobs))
+
+    for index, (country, partner_type) in enumerate(search_jobs, start=1):
+        message = f"Searching {country} — {partner_type} ({index}/{total})"
+        log(message)
+        if progress_callback:
+            progress_callback(int((index - 1) * 85 / total), message)
+
+        query = (
+            f"best {PARTNER_TYPE_QUERIES.get(partner_type, partner_type)} "
+            f"in {country} startup investors portfolio founders "
+            f"co-investment"
+        )
+
+        try:
+            result = search(query)
+            research_text = combined_raw_text(
+                result, char_limit=max_research_chars
+            )
+
+            if not research_text:
+                log("  No usable search results.")
+                continue
+
+            extraction = safe_json_parse(
+                llm(
+                    partner_discovery_prompt(
+                        research_text, [country], [partner_type]
+                    )
+                )
+            )
+
+            candidates = extraction.get("partners", [])
+            if not isinstance(candidates, list):
+                candidates = []
+
+            for raw in candidates[:max_per_search]:
+                if not isinstance(raw, dict):
+                    continue
+
+                record = {
+                    "name": normalize_text(raw.get("name", "")),
+                    "type": normalize_text(raw.get("type", "")),
+                    "country": normalize_text(raw.get("country", "")),
+                    "city": normalize_text(raw.get("city", "")),
+                    "website": normalize_text(raw.get("website", "")),
+                    "linkedin": normalize_text(raw.get("linkedin", "")),
+                    "investment_focus": normalize_text(
+                        raw.get("investment_focus", "")
+                    ),
+                    "stage_focus": normalize_text(raw.get("stage_focus", "")),
+                    "typical_check": normalize_text(
+                        raw.get("typical_check", "")
+                    ),
+                    "portfolio_examples": normalize_text(
+                        raw.get("portfolio_examples", "")
+                    ),
+                    "recent_activity": normalize_text(
+                        raw.get("recent_activity", "")
+                    ),
+                    "reason_relevant": normalize_text(
+                        raw.get("reason_relevant", "")
+                    ),
+                    "confidence": normalize_text(
+                        raw.get("confidence", "")
+                    ).lower(),
+                }
+
+                if not record["name"]:
+                    continue
+
+                name_key = _partner_record_key(record["name"])
+                domain = normalize_domain(record["website"])
+                linkedin = normalize_linkedin(record["linkedin"])
+
+                if (
+                    name_key in seen["names"]
+                    or (domain and domain in seen["domains"])
+                    or (linkedin and linkedin in seen["linkedin"])
+                ):
+                    continue
+
+                seen["names"].add(name_key)
+                if domain:
+                    seen["domains"].add(domain)
+                if linkedin:
+                    seen["linkedin"].add(linkedin)
+
+                record["source_country"] = country
+                record["source_type"] = partner_type
+                discovered.append(record)
+
+        except Exception as error:
+            log(f"  Search error: {error}")
+
+        if request_delay:
+            time.sleep(request_delay)
+
+    if progress_callback:
+        progress_callback(100, f"Discovery complete — {len(discovered)} candidates")
+
+    return {
+        "partners": discovered,
+        "searches": len(search_jobs),
+        "log": log_lines,
+    }
+
+
+def add_discovered_partners_to_sheet(
+    worksheet,
+    records,
+    log=print,
+):
+    """Append selected discovered partners to the existing Partner sheet."""
+
+    headers = worksheet.row_values(1)
+    if not headers:
+        raise RuntimeError("Partner sheet has no header row.")
+
+    indexes = build_existing_partner_indexes(worksheet)
+    added = []
+    skipped = []
+
+    for record in records:
+        name = normalize_text(record.get("name", ""))
+        if not name:
+            continue
+
+        if partner_already_exists(record, indexes):
+            skipped.append(name)
+            log(f"  SKIP partner duplicate: {name}")
+            continue
+
+        row = build_partner_sheet_row(headers, record)
+        if not any(normalize_text(x) for x in row):
+            skipped.append(name)
+            log(f"  SKIP partner - no compatible sheet columns: {name}")
+            continue
+
+        worksheet.append_row(row, value_input_option="USER_ENTERED")
+        added.append(name)
+
+        indexes["names"].add(_partner_record_key(name))
+        domain = normalize_domain(record.get("website", ""))
+        linkedin = normalize_linkedin(record.get("linkedin", ""))
+        if domain:
+            indexes["domains"].add(domain)
+        if linkedin:
+            indexes["linkedin"].add(linkedin)
+
+        log(f"  ADDED PARTNER: {name}")
+
+    return {"added": added, "skipped": skipped}
+
+
 # ============================================================================
 # PROMPTS
 # ============================================================================
