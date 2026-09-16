@@ -1814,7 +1814,55 @@ def add_discovered_partners_to_sheet(
             log(f"  SKIP partner - no compatible sheet columns: {name}")
             continue
 
-        worksheet.append_row(row, value_input_option="USER_ENTERED")
+        # Insert at the first row after the actual used range. Do not rely on
+        # append_row(), because worksheet dimensions/formatting can make its
+        # append position unreliable.
+        current_values = worksheet.get_all_values()
+        if not current_values:
+            raise RuntimeError("Partner sheet returned no rows.")
+
+        last_populated_row = 1
+        for row_number, existing_row in enumerate(current_values, start=1):
+            if any(normalize_text(value) for value in existing_row):
+                last_populated_row = row_number
+
+        insert_at = last_populated_row + 1
+        log(f"  INSERTING PARTNER: {name} at row {insert_at}")
+
+        worksheet.insert_row(
+            row,
+            index=insert_at,
+            value_input_option="USER_ENTERED",
+        )
+
+        time.sleep(0.75)
+        after_values = worksheet.get_all_values()
+
+        if len(after_values) != len(current_values) + 1:
+            raise RuntimeError(
+                "Partner insert verification failed: unexpected row count. "
+                f"Before={len(current_values)}, After={len(after_values)}, "
+                f"Expected={len(current_values) + 1}"
+            )
+
+        name_col = None
+        for col_index, header in enumerate(headers):
+            if normalize_header(header) in {"company name", "partner name", "name"}:
+                name_col = col_index
+                break
+
+        if name_col is None:
+            raise RuntimeError("Partner insert verification failed: name column not found.")
+
+        actual_row = after_values[insert_at - 1]
+        actual_name = normalize_text(actual_row[name_col]) if len(actual_row) > name_col else ""
+
+        if _partner_record_key(actual_name) != _partner_record_key(name):
+            raise RuntimeError(
+                "Partner insert verification failed: wrong row was written. "
+                f"Expected={name!r}, Found={actual_name!r}, Row={insert_at}"
+            )
+
         added.append(name)
 
         indexes["names"].add(_partner_record_key(name))
