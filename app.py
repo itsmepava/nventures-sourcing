@@ -717,7 +717,7 @@ elif page == "Partner Discovery":
                 "Bhutan",
                 "Maldives",
                 "Afghanistan",
-                'Singapore",
+                "Singapore",
                 "Vietnam",
                 "Indonesia"
             ],
@@ -730,7 +730,7 @@ elif page == "Partner Discovery":
                 "Bhutan",
                 "Maldives",
                 "Afghanistan",
-                'Singapore",
+                "Singapore",
                 "Vietnam",
                 "Indonesia"
             ],
