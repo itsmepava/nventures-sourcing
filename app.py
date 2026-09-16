@@ -10,7 +10,7 @@ import streamlit as st
 import database
 from config import settings
 from google_sheets import get_worksheets
-from sourcing_engine import run_sourcing
+from sourcing_engine import run_sourcing, discover_partners, add_discovered_partners_to_sheet
 
 # ============================================================================
 # APP SETUP
@@ -384,6 +384,9 @@ if not st.session_state.user:
 
 user = st.session_state.user
 
+if "partner_discovery_results" not in st.session_state:
+    st.session_state.partner_discovery_results = []
+
 # ============================================================================
 # SIDEBAR
 # ============================================================================
@@ -403,7 +406,7 @@ if st.sidebar.button("Sign out", use_container_width=True):
 
 st.sidebar.divider()
 
-pages = ["Dashboard", "Run History"]
+pages = ["Dashboard", "Partner Discovery", "Run History"]
 if user["role"] == "admin":
     pages.append("Admin")
 
@@ -476,8 +479,8 @@ if page == "Dashboard":
             <div class="nv-card-title">Current screening mandate</div>
             <div class="nv-card-text">
                 <b>B2B:</b> required &nbsp; • &nbsp;
-                <b>Stage:</b> pre-seed / seed &nbsp; • &nbsp;
-                <b>Funding ceiling:</b> ${settings.max_total_funding:,.0f}
+                <b>Geography:</b> no restriction &nbsp; • &nbsp;
+                <b>Funding:</b> no ceiling / stage restriction
             </div>
         </div>
         """,
@@ -678,6 +681,284 @@ if page == "Dashboard":
                     file_name="sourcing_run_failed.log",
                     mime="text/plain",
                 )
+
+
+# ============================================================================
+# PARTNER DISCOVERY
+# ============================================================================
+
+elif page == "Partner Discovery":
+    st.markdown(
+        """
+        <div class="nv-hero">
+            <div class="nv-hero-title">Partner Discovery</div>
+            <div class="nv-hero-subtitle">
+                Find South Asia-based VCs, accelerators, angel networks,
+                incubators and other potential co-investment partners.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Discovery controls")
+
+    d1, d2 = st.columns(2)
+
+    with d1:
+        discovery_countries = st.multiselect(
+            "Countries",
+            [
+                "India",
+                "Sri Lanka",
+                "Bangladesh",
+                "Pakistan",
+                "Nepal",
+                "Bhutan",
+                "Maldives",
+                "Afghanistan",
+            ],
+            default=[
+                "India",
+                "Sri Lanka",
+                "Bangladesh",
+                "Pakistan",
+                "Nepal",
+            ],
+        )
+
+    with d2:
+        discovery_types = st.multiselect(
+            "Partner types",
+            [
+                "Venture Capital",
+                "Accelerator",
+                "Angel Syndicate / Angel Network",
+                "Incubator",
+                "Seed Fund",
+                "Corporate Venture Capital",
+                "Family Office",
+            ],
+            default=[
+                "Venture Capital",
+                "Accelerator",
+                "Angel Syndicate / Angel Network",
+                "Incubator",
+                "Seed Fund",
+            ],
+        )
+
+    st.caption(
+        "The tool researches organizations that are based in the selected "
+        "countries. Results are suggestions for the nVentures partner database "
+        "and should be verified before outreach."
+    )
+
+    openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
+    google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
+
+    if not (openrouter_ready and tavily_ready and google_ready):
+        st.warning(
+            "OpenRouter, Tavily and Google Sheets must all be configured "
+            "before partner discovery can run."
+        )
+
+    if st.button(
+        "🔎 Find Partners",
+        type="primary",
+        use_container_width=True,
+        disabled=not (openrouter_ready and tavily_ready and google_ready),
+    ):
+        progress = st.progress(0)
+        status = st.empty()
+        log_placeholder = st.empty()
+        log_buffer = []
+        last_render = [0.0]
+
+        def render_discovery_log(force=False):
+            now = time.monotonic()
+            if not force and now - last_render[0] < 0.3:
+                return
+            last_render[0] = now
+            log_placeholder.code(
+                "\n".join(log_buffer[-200:]) or "Waiting...",
+                language="log",
+            )
+
+        def discovery_log(line):
+            log_buffer.append(line)
+            render_discovery_log()
+
+        def discovery_progress(value, message=""):
+            progress.progress(max(0, min(100, int(value))))
+            if message:
+                status.info(message)
+
+        try:
+            status.info("Connecting to Google Sheets...")
+            (
+                _sh,
+                _sourcing_ws,
+                partner_ws,
+                _control_ws,
+                _partner_name,
+            ) = get_worksheets(
+                settings.spreadsheet_id,
+                settings.sourcing_tab,
+                settings.control_tab,
+                settings.partner_tab_candidates,
+            )
+
+            status.info("Researching potential partners...")
+            result = discover_partners(
+                openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+                tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+                openrouter_model=settings.openrouter_model,
+                countries=discovery_countries,
+                partner_types=discovery_types,
+                tavily_timeout=settings.tavily_timeout,
+                openrouter_timeout=settings.openrouter_timeout,
+                max_tavily_results=8,
+                max_research_chars=12000,
+                request_delay=0.5,
+                progress_callback=discovery_progress,
+                log_callback=discovery_log,
+            )
+
+            st.session_state.partner_discovery_results = result["partners"]
+            render_discovery_log(force=True)
+            status.success(
+                f"Discovery complete — {len(result['partners'])} unique candidates found."
+            )
+
+        except Exception as exc:
+            render_discovery_log(force=True)
+            st.error("Partner discovery failed.")
+            st.exception(exc)
+
+    results = st.session_state.get("partner_discovery_results", [])
+
+    if results:
+        st.divider()
+        st.markdown("### Discovered partners")
+
+        import pandas as pd
+
+        display_rows = [
+            {
+                "Partner": r.get("name", ""),
+                "Type": r.get("type", ""),
+                "Country": r.get("country", ""),
+                "City": r.get("city", ""),
+                "Investment Focus": r.get("investment_focus", ""),
+                "Stage": r.get("stage_focus", ""),
+                "Typical Check": r.get("typical_check", ""),
+                "Confidence": r.get("confidence", ""),
+            }
+            for r in results
+        ]
+
+        st.dataframe(
+            pd.DataFrame(display_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        selected_names = st.multiselect(
+            "Select partners to add to the Partner sheet",
+            [r.get("name", "") for r in results if r.get("name")],
+        )
+
+        if selected_names and st.button(
+            "➕ Add selected partners to Google Sheets",
+            type="primary",
+        ):
+            try:
+                (
+                    _sh,
+                    _sourcing_ws,
+                    partner_ws,
+                    _control_ws,
+                    _partner_name,
+                ) = get_worksheets(
+                    settings.spreadsheet_id,
+                    settings.sourcing_tab,
+                    settings.control_tab,
+                    settings.partner_tab_candidates,
+                )
+
+                selected_records = [
+                    r for r in results if r.get("name") in selected_names
+                ]
+
+                add_result = add_discovered_partners_to_sheet(
+                    partner_ws,
+                    selected_records,
+                    log=print,
+                )
+
+                if add_result["added"]:
+                    st.success(
+                        f"Added {len(add_result['added'])} partner(s) to Google Sheets."
+                    )
+
+                if add_result["skipped"]:
+                    st.info(
+                        "Skipped existing partners: "
+                        + ", ".join(add_result["skipped"])
+                    )
+
+                # Remove successfully added records from the pending list.
+                added_set = set(add_result["added"])
+                st.session_state.partner_discovery_results = [
+                    r for r in results if r.get("name") not in added_set
+                ]
+                st.rerun()
+
+            except Exception as exc:
+                st.error("Could not add partners to Google Sheets.")
+                st.exception(exc)
+
+        st.markdown("### Partner details")
+
+        for record in results:
+            with st.expander(
+                f"{record.get('name', 'Unknown')} · "
+                f"{record.get('type', 'Unknown')} · "
+                f"{record.get('country', 'Unknown')}"
+            ):
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    st.write(f"**Website:** {record.get('website', '') or '—'}")
+                    st.write(f"**LinkedIn:** {record.get('linkedin', '') or '—'}")
+                    st.write(
+                        f"**Investment focus:** "
+                        f"{record.get('investment_focus', '') or '—'}"
+                    )
+                    st.write(
+                        f"**Stage focus:** "
+                        f"{record.get('stage_focus', '') or '—'}"
+                    )
+
+                with c2:
+                    st.write(
+                        f"**Typical check:** "
+                        f"{record.get('typical_check', '') or '—'}"
+                    )
+                    st.write(
+                        f"**Portfolio examples:** "
+                        f"{record.get('portfolio_examples', '') or '—'}"
+                    )
+                    st.write(
+                        f"**Recent activity:** "
+                        f"{record.get('recent_activity', '') or '—'}"
+                    )
+                    st.write(
+                        f"**Why relevant:** "
+                        f"{record.get('reason_relevant', '') or '—'}"
+                    )
 
 # ============================================================================
 # RUN HISTORY
