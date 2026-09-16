@@ -286,13 +286,23 @@ def http_request_with_retry(
             # RETRYABLE HTTP ERRORS
             # ---------------------------------------------------------
 
+            # OpenRouter can return HTTP 402 when the account's temporary
+            # in-flight budget is exhausted. This is NOT a permanent
+            # insufficient-credit error: the response tells us how long to
+            # wait via Retry-After. Treat only this specific 402 condition as
+            # retryable; ordinary 402 credit errors should fail immediately.
+            is_openrouter_inflight_402 = (
+                response.status_code == 402
+                and "in_flight_budget_exhausted" in response.text
+            )
+
             if response.status_code in {
                 429,
                 500,
                 502,
                 503,
                 504,
-            }:
+            } or is_openrouter_inflight_402:
                 retry_after = response.headers.get("Retry-After")
 
                 if retry_after:
@@ -302,6 +312,15 @@ def http_request_with_retry(
                         wait_seconds = min(30, 2 ** attempt)
                 else:
                     wait_seconds = min(30, 2 ** attempt)
+
+                # OpenRouter may legitimately ask us to wait 120+ seconds
+                # while earlier requests settle. Honor that server value
+                # instead of immediately trying another model.
+                if is_openrouter_inflight_402 and retry_after:
+                    try:
+                        wait_seconds = max(wait_seconds, float(retry_after))
+                    except (TypeError, ValueError):
+                        pass
 
                 wait_seconds += random.uniform(0.25, 1.0)
 
@@ -446,7 +465,7 @@ def call_llm(
     # Keep requests within a low/free OpenRouter credit balance.
     # OpenRouter rejects the entire request if max_tokens exceeds the
     # remaining affordable completion budget.
-    max_tokens = min(int(max_tokens or 0), 1100)
+    max_tokens = min(int(max_tokens or 0), 1000)
     errors = []
 
     for model in models:
@@ -478,7 +497,7 @@ def call_llm(
                 headers=headers,
                 json_body=body,
                 timeout=timeout,
-                max_attempts=3,
+                max_attempts=2,
                 label=f"OpenRouter [{model}]",
                 log=log,
             )
@@ -505,8 +524,18 @@ def call_llm(
                 errors.append(error_text)
 
                 log(f"      OpenRouter error: {error_text}")
-                log(f"      Trying next model...")
 
+                # This is account-wide, not model-specific. Trying another
+                # model immediately only creates another request against the
+                # same exhausted in-flight budget.
+                if code == 402 and "in_flight_budget_exhausted" in str(message):
+                    log(
+                        "      OpenRouter in-flight budget exhausted; "
+                        "not trying another model."
+                    )
+                    break
+
+                log(f"      Trying next model...")
                 continue
 
             choices = data.get("choices", [])
@@ -1553,7 +1582,7 @@ def discover_partners(
     openrouter_timeout=90,
     max_tavily_results=8,
     max_research_chars=12000,
-    request_delay=0.5,
+    request_delay=2.0,
     progress_callback=None,
     log_callback=None,
 ):
