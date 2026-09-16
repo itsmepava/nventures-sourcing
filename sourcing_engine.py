@@ -1426,7 +1426,7 @@ SOUTH_ASIA_COUNTRIES = [
                 "Bhutan",
                 "Maldives",
                 "Afghanistan",
-                'Singapore",
+                "Singapore",
                 "Vietnam",
                 "Indonesia"
 ]
