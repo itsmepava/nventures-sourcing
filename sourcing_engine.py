@@ -1413,40 +1413,37 @@ def verification_prompt(researched_name, deep_text):
         "Research:\n"
         f"{deep_text}\n\n"
         "Evaluate ONLY using the supplied research.\n\n"
+        "The sourcing mandate does NOT impose a funding ceiling or a specific\n"
+        "funding-round requirement. Do NOT reject a company based solely on\n"
+        "the amount it has raised or whether it has completed a Series A.\n\n"
         "Return ONLY valid JSON:\n\n"
         "{{\n"
         '  "b2b": true,\n'
-        '  "early_stage": true,\n'
-        '  "funding_within_limit": true,\n'
         '  "active_company": true,\n'
         '  "too_mature": false,\n'
         '  "confidence": "high",\n'
-        '  "reason": "Short factual explanation"\n'
+        '  "reason": "Factual explanation"\n'
         "}}\n\n"
         "Rules:\n\n"
         "B2B:\n"
-        "The company must primarily sell to businesses/institutions.\n\n"
-        "CURRENT FUNDING STAGE:\n"
-        "Evaluate the company's actual current/latest completed funding stage.\n\n"
-        "A company should NOT be rejected merely because the research mentions:\n"
-        "- a future Series A\n"
-        "- plans to raise a Series A\n"
-        "- preparing for a Series A\n"
-        "- expectations of a Series A\n"
-        "- investors discussing a possible Series A\n"
-        "- speculation about a future Series A\n\n"
-        "Clearly mature/growth-stage company = false.\n\n"
-        "ACTIVE:\n"
-        "There should be evidence of an actual operating company.\n\n"
+        "The company must primarily sell to businesses, institutions, or\n"
+        "organizations.\n\n"
+        "ACTIVE COMPANY:\n"
+        "There should be credible evidence that the company is an actual\n"
+        "operating business with a real product or service.\n\n"
+        "MATURITY:\n"
+        "Reject only companies that are clearly mature/growth-stage businesses\n"
+        "and are no longer appropriate for an early-stage sourcing pipeline.\n\n"
+        "FUNDING:\n"
+        "Funding amount is NOT a screening criterion.\n"
+        "Do NOT reject because total funding exceeds any particular amount.\n\n"
+        "FUNDING STAGE:\n"
+        "Funding stage is NOT a screening criterion.\n"
+        "Do NOT reject a company merely because it has completed a Series A.\n"
+        "Do NOT reject a company merely because it has raised later funding.\n\n"
         "Do NOT treat missing evidence as positive evidence.\n\n"
-        "When determining the current stage, prioritize:\n"
-        "1. The latest completed funding round.\n"
-        "2. Explicit statements about the company's current stage.\n"
-        "3. Funding dates and amounts.\n"
-        "4. Distinguish completed funding from planned or future fundraising.\n\n"
-        'Confidence: "high", "medium", or "low".\n'
+        'Confidence must be "high", "medium", or "low".\n'
     )
-
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
