@@ -68,23 +68,35 @@ def safe_json_parse(text):
     except json.JSONDecodeError:
         pass
 
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end > start:
+    # First try decoding from the first JSON object/array. This handles models
+    # that prepend a short explanation or markdown despite the JSON-only prompt.
+    for opener, decoder in (("{", "object"), ("[", "array")):
+        start = cleaned.find(opener)
+        if start == -1:
+            continue
         try:
-            return json.loads(cleaned[start:end + 1])
+            value, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+            if decoder == "object" and isinstance(value, dict):
+                return value
+            if decoder == "array" and isinstance(value, list):
+                return value
         except json.JSONDecodeError:
             pass
 
-    start = cleaned.find("[")
-    end = cleaned.rfind("]")
-    if start != -1 and end > start:
+    # Some providers occasionally leave a trailing comma before a closing
+    # brace/array. Fix only that narrow JSON formatting error; never attempt
+    # to invent missing fields or complete truncated content.
+    repaired = re.sub(r",(\s*[}\]])", r"\1", cleaned)
+    if repaired != cleaned:
         try:
-            return json.loads(cleaned[start:end + 1])
+            return json.loads(repaired)
         except json.JSONDecodeError:
             pass
 
-    raise ValueError("Could not parse valid JSON from LLM response.")
+    raise ValueError(
+        "Could not parse valid JSON from LLM response. "
+        f"Response preview: {cleaned[:500]}"
+    )
 
 
 def normalize_header(value):
@@ -465,7 +477,7 @@ def call_llm(
     # Keep requests within a low/free OpenRouter credit balance.
     # OpenRouter rejects the entire request if max_tokens exceeds the
     # remaining affordable completion budget.
-    max_tokens = min(int(max_tokens or 0), 1400)
+    max_tokens = min(int(max_tokens or 0), 2200)
     errors = []
 
     for model in models:
