@@ -2003,6 +2003,617 @@ def verification_prompt(researched_name, deep_text):
         "Do NOT treat missing evidence as positive evidence.\n\n"
         'Confidence must be "high", "medium", or "low".\n'
     )
+
+# ============================================================================
+# SRI LANKAN FOUNDER SOURCING
+# ============================================================================
+
+SRI_LANKAN_FOUNDER_DISCOVERY_QUERIES = [
+    '"Sri Lankan founder" startup company founder',
+    '"Sri Lankan entrepreneur" startup founder company',
+    '"Sri Lanka" founder "startup" B2B company',
+    '"Sri Lankan" co-founder startup company',
+]
+
+
+def sri_lankan_founder_candidate_prompt(web_text):
+    return (
+        "You are a venture capital sourcing analyst helping nVentures find "
+        "companies founded by Sri Lankan founders.\n\n"
+        "IMPORTANT SCOPE:\n"
+        "- The company may be headquartered ANYWHERE in the world.\n"
+        "- At least one actual founder or co-founder must be Sri Lankan.\n"
+        "- Do NOT infer Sri Lankan identity from a person's name, appearance, "
+        "location, language, or surname.\n"
+        "- Only include a founder when the supplied web evidence explicitly "
+        "supports the Sri Lankan connection or clearly identifies the person "
+        "as Sri Lankan.\n"
+        "- The person must actually be a founder/co-founder of the company, "
+        "not merely an employee, investor, advisor, executive, or alumnus.\n"
+        "- The company must appear to be a real operating business.\n"
+        "- Prefer B2B companies, but do not invent B2B status when the evidence "
+        "does not support it.\n\n"
+        "Return ONLY valid JSON in this exact shape:\n\n"
+        "{\n"
+        '  "candidates": [\n'
+        "    {\n"
+        '      "company_name": "Company Name",\n'
+        '      "founder_name": "Founder Name",\n'
+        '      "founder_role": "Founder / Co-founder",\n'
+        '      "founder_linkedin": "https://linkedin.com/...",\n'
+        '      "founder_sri_lankan_evidence": "Short factual evidence.",\n'
+        '      "evidence_url": "https://...",\n'
+        '      "company_website": "https://...",\n'
+        '      "sector_guess": "Sector",\n'
+        '      "why_it_fits": "Short factual explanation."\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "If the evidence is insufficient, leave that company out.\n\n"
+        "WEB CONTENT:\n"
+        f"{web_text}\n"
+    )
+
+
+def sri_lankan_founder_verification_prompt(
+    company_name,
+    founder_name,
+    founder_evidence,
+    evidence_url,
+    deep_text,
+):
+    return (
+        "You are the final verification analyst for an investment sourcing "
+        "pipeline.\n\n"
+        f"COMPANY: {company_name}\n"
+        f"FOUNDER: {founder_name}\n"
+        f"FOUNDER EVIDENCE FROM DISCOVERY: {founder_evidence}\n"
+        f"EVIDENCE URL: {evidence_url}\n\n"
+        "DEEP RESEARCH:\n"
+        f"{deep_text}\n\n"
+        "Evaluate ONLY using the supplied research. Do not infer nationality "
+        "or Sri Lankan identity from a name, surname, location, ethnicity, "
+        "or other indirect clues.\n\n"
+        "The company qualifies for this special sourcing workflow only if:\n"
+        "1. The named person is actually a founder/co-founder of the company.\n"
+        "2. The supplied evidence explicitly supports that the founder is "
+        "Sri Lankan.\n"
+        "3. The company is a real operating business.\n"
+        "4. The company primarily sells to businesses, institutions, or "
+        "organizations.\n\n"
+        "Company geography is NOT a criterion. The company can be based "
+        "anywhere in the world.\n\n"
+        "Return ONLY valid JSON:\n\n"
+        "{\n"
+        '  "b2b": true,\n'
+        '  "active_company": true,\n'
+        '  "founder_is_founder": true,\n'
+        '  "founder_is_sri_lankan": true,\n'
+        '  "confidence": "high",\n'
+        '  "reason": "Short factual explanation.",\n'
+        '  "founder_evidence": "Short factual evidence.",\n'
+        '  "evidence_url": "https://..."\n'
+        "}\n\n"
+        'Confidence must be "high", "medium", or "low".\n'
+        "If the Sri Lankan-founder criterion cannot be verified from the "
+        "research, set founder_is_sri_lankan to false.\n"
+    )
+
+
+def _set_first_matching_field(row, first_idx, aliases, value):
+    """Set the first matching sheet column from a list of aliases."""
+    value = normalize_text(value)
+    if not value:
+        return False
+
+    for header in aliases:
+        col = get_col(header, first_idx)
+        if col:
+            row[col - 1] = value
+            return True
+
+    return False
+
+
+def build_sri_lankan_founder_sheet_row(
+    headers,
+    record,
+    founder_name,
+    founder_linkedin,
+    founder_evidence,
+    evidence_url,
+    verification,
+    source_label="Sri Lankan Founder Sourcing",
+):
+    """
+    Build a normal Active Sourcing row while adding founder-specific evidence
+    wherever the existing sheet has matching columns. If dedicated evidence
+    columns do not exist, the evidence is preserved in Extra Notes / Reason.
+    """
+    row, populated = build_sheet_row(
+        headers,
+        record,
+        source_label,
+        verification,
+        "",
+    )
+
+    first_idx, all_idx = build_header_index(headers)
+
+    _set_first_matching_field(
+        row,
+        first_idx,
+        ["Founder Name", "Founder", "Founders"],
+        founder_name,
+    )
+    _set_first_matching_field(
+        row,
+        first_idx,
+        ["Founder LinkedIn", "Founder Linkedin", "Founder LinkedIn URL"],
+        founder_linkedin,
+    )
+    _set_first_matching_field(
+        row,
+        first_idx,
+        [
+            "Founder Nationality",
+            "Founder Country",
+            "Founder Geography",
+        ],
+        "Sri Lankan",
+    )
+    _set_first_matching_field(
+        row,
+        first_idx,
+        [
+            "Founder Evidence",
+            "Sri Lankan Founder Evidence",
+            "Founder Verification",
+        ],
+        founder_evidence,
+    )
+    _set_first_matching_field(
+        row,
+        first_idx,
+        [
+            "Founder Evidence URL",
+            "Sri Lankan Founder Evidence URL",
+            "Evidence URL",
+        ],
+        evidence_url,
+    )
+    _set_first_matching_field(
+        row,
+        first_idx,
+        [
+            "Sourcing Type",
+            "Source Type",
+            "Sourcing Method",
+        ],
+        source_label,
+    )
+
+    # Preserve the founder audit trail even if the sheet has no dedicated
+    # evidence columns.
+    evidence_note = (
+        f"Sri Lankan founder: {founder_name}. "
+        f"Evidence: {founder_evidence or 'Verified from supplied research.'}"
+    )
+    if evidence_url:
+        evidence_note += f" Source: {evidence_url}"
+
+    notes_cols = all_idx.get(normalize_header("Extra Notes"), [])
+    if notes_cols:
+        existing_note = normalize_text(row[notes_cols[0] - 1])
+        row[notes_cols[0] - 1] = (
+            f"{existing_note} {evidence_note}".strip()
+        )
+
+    return row, populated
+
+
+def run_sri_lankan_founder_sourcing(
+    *,
+    sourcing_ws,
+    openrouter_api_key,
+    tavily_api_key,
+    openrouter_model="openrouter/free",
+    target_companies=25,
+    max_deep_research=45,
+    max_candidates_per_search=8,
+    tavily_timeout=120,
+    openrouter_timeout=120,
+    max_tavily_results=5,
+    max_research_chars=14000,
+    request_delay=1.0,
+    require_b2b=True,
+    progress_callback=None,
+    log_callback=None,
+):
+    """
+    Find globally based companies with at least one verified Sri Lankan
+    founder/co-founder and write accepted companies into Active Sourcing.
+    """
+    if not openrouter_api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is missing.")
+    if not tavily_api_key:
+        raise RuntimeError("TAVILY_API_KEY is missing.")
+
+    target_companies = int(target_companies)
+    max_deep_research = int(max_deep_research)
+    max_candidates_per_search = int(max_candidates_per_search)
+    request_delay = float(request_delay)
+
+    log_lines = []
+
+    def log(message=""):
+        stamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        text = f"[{stamp}] {message}"
+        log_lines.append(text)
+        print(text, flush=True)
+        if log_callback:
+            try:
+                log_callback(text)
+            except Exception:
+                pass
+
+    def progress(value, message=""):
+        if message:
+            log(message)
+        if progress_callback:
+            try:
+                progress_callback(max(0, min(100, int(value))), message)
+            except Exception:
+                pass
+
+    models = build_model_order(openrouter_model)
+
+    def llm(prompt, max_tokens=1400):
+        return call_llm(
+            prompt,
+            api_key=openrouter_api_key,
+            models=models,
+            timeout=openrouter_timeout,
+            max_tokens=max_tokens,
+            log=log,
+        )
+
+    def search(query, max_results=None):
+        return tavily_search(
+            query,
+            api_key=tavily_api_key,
+            timeout=tavily_timeout,
+            max_results=max_results or max_tavily_results,
+            log=log,
+        )
+
+    sourcing_headers = sourcing_ws.row_values(1)
+    if not sourcing_headers:
+        raise RuntimeError("Active Sourcing has no header row.")
+
+    existing_indexes = build_existing_indexes(sourcing_ws)
+
+    run_started = datetime.now(timezone.utc)
+
+    accepted = []
+    accepted_details = []
+    rejected = []
+    duplicates = []
+    errors = []
+    candidates_considered = 0
+    deep_research_count = 0
+    seen_candidates = set()
+
+    # ------------------------------------------------------------------
+    # Discovery: multiple independent searches, then one compact LLM pass
+    # per search. This is intentionally sequential to remain friendly to
+    # low/free OpenRouter budgets.
+    # ------------------------------------------------------------------
+    discovery_candidates = []
+
+    for search_index, query in enumerate(SRI_LANKAN_FOUNDER_DISCOVERY_QUERIES):
+        if len(accepted) >= target_companies:
+            break
+
+        progress(
+            5 + int(25 * search_index / len(SRI_LANKAN_FOUNDER_DISCOVERY_QUERIES)),
+            f"Founder discovery {search_index + 1}/"
+            f"{len(SRI_LANKAN_FOUNDER_DISCOVERY_QUERIES)}",
+        )
+
+        try:
+            log(f"Searching for Sri Lankan founders: {query}")
+            result = search(query)
+            web_text = combined_raw_text(
+                result,
+                char_limit=max_research_chars,
+            )
+
+            if not web_text:
+                log("  No usable search results.")
+                continue
+
+            extraction = safe_json_parse(
+                llm(
+                    sri_lankan_founder_candidate_prompt(web_text),
+                    max_tokens=1400,
+                )
+            )
+
+            candidates = extraction.get("candidates", [])
+            if not isinstance(candidates, list):
+                candidates = []
+
+            for candidate in candidates[:max_candidates_per_search]:
+                if not isinstance(candidate, dict):
+                    continue
+
+                company_name = normalize_text(candidate.get("company_name", ""))
+                founder_name = normalize_text(candidate.get("founder_name", ""))
+
+                if not company_name or not founder_name:
+                    continue
+
+                key = (
+                    normalize_company_name(company_name),
+                    normalize_text(founder_name).lower(),
+                )
+                if key in seen_candidates:
+                    continue
+
+                seen_candidates.add(key)
+                discovery_candidates.append(candidate)
+
+            log(
+                f"  Founder discovery returned "
+                f"{len(candidates[:max_candidates_per_search])} candidates."
+            )
+
+        except Exception as error:
+            log(f"  Discovery search failed: {error}")
+            errors.append((query, str(error)))
+
+        time.sleep(request_delay)
+
+    total_candidates = max(1, len(discovery_candidates))
+
+    # ------------------------------------------------------------------
+    # Research + strict founder verification + normal company verification
+    # ------------------------------------------------------------------
+    for index, candidate in enumerate(discovery_candidates):
+        if len(accepted) >= target_companies:
+            break
+        if deep_research_count >= max_deep_research:
+            log("Deep research limit reached.")
+            break
+
+        candidates_considered += 1
+
+        company_name = normalize_text(candidate.get("company_name", ""))
+        founder_name = normalize_text(candidate.get("founder_name", ""))
+        founder_role = normalize_text(candidate.get("founder_role", ""))
+        founder_linkedin = normalize_text(candidate.get("founder_linkedin", ""))
+        founder_evidence = normalize_text(
+            candidate.get("founder_sri_lankan_evidence", "")
+        )
+        evidence_url = normalize_text(candidate.get("evidence_url", ""))
+        company_website = normalize_text(candidate.get("company_website", ""))
+        sector_guess = normalize_text(candidate.get("sector_guess", ""))
+        why_it_fits = normalize_text(candidate.get("why_it_fits", ""))
+
+        progress(
+            30 + int(65 * index / total_candidates),
+            f"Researching {index + 1}/{total_candidates}: {company_name}",
+        )
+        log(
+            f"Candidate: {company_name} — {founder_name}"
+            f"{f' ({founder_role})' if founder_role else ''}"
+        )
+
+        if company_is_existing(
+            company_name,
+            website=company_website,
+            indexes=existing_indexes,
+        ):
+            log("  SKIP - company already exists in Google Sheets.")
+            duplicates.append(company_name)
+            continue
+
+        deep_research_count += 1
+        time.sleep(request_delay)
+
+        try:
+            research_query = (
+                f'"{company_name}" "{founder_name}" founder '
+                f'"Sri Lankan" company headquarters B2B customers funding'
+            )
+            deep_result = search(research_query)
+            deep_text = combined_raw_text(
+                deep_result,
+                char_limit=max_research_chars,
+            )
+
+            if not deep_text:
+                rejected.append((company_name, "No usable research"))
+                log("  REJECT - no usable research.")
+                continue
+
+            record = clean_ai_record(
+                safe_json_parse(
+                    llm(
+                        research_prompt(
+                            company_name,
+                            why_it_fits,
+                            deep_text,
+                        ),
+                        max_tokens=1400,
+                    )
+                )
+            )
+
+            if not normalize_text(record.get("Company Name", "")):
+                record["Company Name"] = company_name
+            if not normalize_text(record.get("Sector", "")):
+                record["Sector"] = sector_guess
+            if not normalize_text(record.get("Website", "")):
+                record["Website"] = company_website
+
+            researched_name = (
+                normalize_text(record.get("Company Name", ""))
+                or company_name
+            )
+            website = normalize_text(record.get("Website", ""))
+            company_linkedin = normalize_text(
+                record.get("Company LinkedIn", "")
+            )
+
+            if company_is_existing(
+                researched_name,
+                website=website,
+                linkedin=company_linkedin,
+                indexes=existing_indexes,
+            ):
+                log("  SKIP - duplicate after research.")
+                duplicates.append(researched_name)
+                continue
+
+            log("  Verifying B2B + Sri Lankan founder...")
+            verification = safe_json_parse(
+                llm(
+                    sri_lankan_founder_verification_prompt(
+                        researched_name,
+                        founder_name,
+                        founder_evidence,
+                        evidence_url,
+                        deep_text,
+                    ),
+                    max_tokens=1100,
+                )
+            )
+
+            b2b = verification.get("b2b", False) is True
+            active_company = verification.get("active_company", False) is True
+            founder_is_founder = (
+                verification.get("founder_is_founder", False) is True
+            )
+            founder_is_sri_lankan = (
+                verification.get("founder_is_sri_lankan", False) is True
+            )
+            confidence = normalize_text(
+                verification.get("confidence", "")
+            ).lower()
+
+            failures = []
+            if require_b2b and not b2b:
+                failures.append("B2B requirement not verified")
+            if not active_company:
+                failures.append("Active-company status not verified")
+            if not founder_is_founder:
+                failures.append("Founder relationship not verified")
+            if not founder_is_sri_lankan:
+                failures.append("Sri Lankan-founder status not verified")
+            if confidence == "low":
+                failures.append("Verification confidence is low")
+
+            if failures:
+                log("  REJECTED")
+                for failure in failures:
+                    log(f"    - {failure}")
+                rejected.append((researched_name, "; ".join(failures)))
+                continue
+
+            verified_evidence = normalize_text(
+                verification.get("founder_evidence", "")
+            ) or founder_evidence
+            verified_url = normalize_text(
+                verification.get("evidence_url", "")
+            ) or evidence_url
+
+            row, populated_fields = build_sri_lankan_founder_sheet_row(
+                sourcing_headers,
+                record,
+                founder_name,
+                founder_linkedin,
+                verified_evidence,
+                verified_url,
+                verification,
+            )
+
+            log("  Writing company to Google Sheets...")
+            written_row_number = append_and_verify_row(
+                sourcing_ws,
+                row,
+                sourcing_headers,
+                researched_name,
+                log=log,
+            )
+            log(
+                f"  CONFIRMED IN GOOGLE SHEETS - row "
+                f"{written_row_number}"
+            )
+
+            add_company_to_indexes(
+                researched_name,
+                website=website,
+                linkedin=company_linkedin,
+                indexes=existing_indexes,
+            )
+
+            accepted.append(researched_name)
+            accepted_details.append(
+                {
+                    "company": researched_name,
+                    "founder": founder_name,
+                    "founder_role": founder_role,
+                    "founder_evidence": verified_evidence,
+                    "evidence_url": verified_url,
+                    "country": record.get("Country", ""),
+                    "headquarters": record.get("Headquarters", ""),
+                    "sector": record.get("Sector", ""),
+                    "stage": record.get("Stage", ""),
+                    "row": written_row_number,
+                    "fields": len(populated_fields),
+                }
+            )
+
+            progress(
+                95,
+                f"Added {len(accepted)}/{target_companies}: {researched_name}",
+            )
+
+        except Exception as error:
+            log(f"  COMPANY ERROR - {company_name}: {error}")
+            errors.append((company_name, str(error)))
+            continue
+
+        time.sleep(request_delay)
+
+    run_finished = datetime.now(timezone.utc)
+
+    progress(
+        100,
+        f"Sri Lankan founder sourcing complete - "
+        f"{len(accepted)}/{target_companies} added.",
+    )
+
+    return {
+        "started_at": run_started.isoformat(),
+        "finished_at": run_finished.isoformat(),
+        "target": target_companies,
+        "accepted": accepted,
+        "accepted_details": accepted_details,
+        "rejected": rejected,
+        "duplicates": duplicates,
+        "partner_errors": errors,
+        "deep_research_calls": deep_research_count,
+        "candidates_considered": candidates_considered,
+        "partners_processed": len(SRI_LANKAN_FOUNDER_DISCOVERY_QUERIES),
+        "partner_breakdown": {},
+        "log": log_lines,
+        "sourcing_mode": "Sri Lankan Founder Sourcing",
+    }
+
+
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
