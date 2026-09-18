@@ -857,7 +857,7 @@ elif page == "Sri Lankan Founder Sourcing":
                 max_partners=int(founder_partners),
                 max_deep_research=int(founder_research),
                 max_candidates_per_search=8,
-                max_candidates_per_partner=10
+                max_candidates_per_partner=10,
                 openrouter_timeout=settings.openrouter_timeout,
                 max_research_chars=settings.max_research_chars,
                 request_delay=settings.request_delay,
