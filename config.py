@@ -1,13 +1,38 @@
 import os
 from dataclasses import dataclass
 
+# ---------------------------------------------------------------------------
+# OPENROUTER: FREE-ONLY SAFETY
+# ---------------------------------------------------------------------------
+# Never allow an environment variable / Streamlit secret to silently select
+# a paid OpenRouter model. OpenRouter's free router always selects from the
+# currently available free models.
+FREE_OPENROUTER_MODEL = "openrouter/free"
+
+
+def _get_free_openrouter_model():
+    requested = os.getenv("OPENROUTER_MODEL", "").strip()
+
+    # Explicitly permitted free slugs. Anything else, including a paid model
+    # such as minimax/minimax-m3, is ignored and replaced with the free router.
+    allowed_free_models = {
+        "openrouter/free",
+        "minimax/minimax-m3:free",
+    }
+
+    if requested in allowed_free_models:
+        return requested
+
+    return FREE_OPENROUTER_MODEL
+
+
 @dataclass(frozen=True)
 class Settings:
     spreadsheet_id: str = os.getenv("SPREADSHEET_ID", "1GQ3dADRqopII1Mg2O3MjqWJ3tFyWI_sre0urgeT5nNs")
     sourcing_tab: str = os.getenv("SOURCING_TAB_NAME", "Active Sourcing")
     control_tab: str = os.getenv("CONTROL_TAB_NAME", "Sourcing Control")
     partner_tab_candidates: tuple = ("Partner List", "Partner", "Partners", "Partner tab")
-    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "minimax/minimax-m3:free")
+    openrouter_model: str = _get_free_openrouter_model()
     max_partners: int = int(os.getenv("MAX_PARTNERS_PER_RUN", "12"))
     max_candidates_per_partner: int = int(os.getenv("MAX_CANDIDATES_PER_PARTNER", "10"))
     max_deep_research: int = int(os.getenv("MAX_DEEP_RESEARCH_PER_RUN", "45"))
