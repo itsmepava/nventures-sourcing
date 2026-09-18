@@ -702,9 +702,18 @@ def freeserp_search(
     if not isinstance(data, dict):
         raise RuntimeError("FreeSerp returned an unexpected response format.")
 
-    results = data.get("results", [])
+    # FreeSerp currently documents a `results` list, but keep compatibility
+    # with alternate/older response names so a provider-side shape change does
+    # not silently turn into an empty search.
+    results = data.get("results")
+    if not isinstance(results, list):
+        results = data.get("organic_results")
+    if not isinstance(results, list):
+        results = data.get("web_results")
     if not isinstance(results, list):
         results = []
+
+    log(f"      FreeSerp returned {len(results)} raw results.")
 
     # Keep compatibility with the old Tavily include_domains argument.
     # Filtering is performed locally so we do not depend on a provider-specific
@@ -718,12 +727,24 @@ def freeserp_search(
         if allowed:
             filtered = []
             for result in results:
-                domain = normalize_domain(result.get("url", ""))
+                url = normalize_text(result.get("url", ""))
+                domain = normalize_domain(url)
                 if domain in allowed or any(
                     domain.endswith("." + root) for root in allowed
                 ):
                     filtered.append(result)
-            results = filtered
+
+            # Do not turn a successful provider response into an empty
+            # discovery pool just because the provider ranked the requested
+            # domain below the first N results. The caller also includes the
+            # domain in the query for targeted portfolio searches.
+            if filtered:
+                results = filtered
+            else:
+                log(
+                    "      FreeSerp domain filter matched 0 results; "
+                    "keeping raw results for LLM inspection."
+                )
 
     data["results"] = results
     return data
@@ -740,7 +761,11 @@ def combined_raw_text(search_response, char_limit=None):
         pieces.append(str(answer))
 
     for result in search_response.get("results", []):
-        title = normalize_text(result.get("title", ""))
+        title = normalize_text(
+            result.get("title")
+            or result.get("name")
+            or ""
+        )
         content = normalize_text(
             result.get("content")
             or result.get("summary")
@@ -748,8 +773,19 @@ def combined_raw_text(search_response, char_limit=None):
             or result.get("description")
             or ""
         )
-        url = normalize_text(result.get("url", ""))
-        pieces.append(f"TITLE: {title}\nURL: {url}\nCONTENT: {content}")
+        url = normalize_text(
+            result.get("url")
+            or result.get("link")
+            or ""
+        )
+        domain = normalize_text(
+            result.get("domain")
+            or result.get("site")
+            or ""
+        )
+        pieces.append(
+            f"TITLE: {title}\nURL: {url}\nDOMAIN: {domain}\nCONTENT: {content}"
+        )
 
     text = "\n\n".join(pieces)
 
@@ -2444,6 +2480,41 @@ def run_sri_lankan_founder_sourcing(
             if not isinstance(candidates, list):
                 candidates = []
 
+            # Some search result batches contain mostly generic articles.
+            # If the first extraction finds nothing, run a second, narrower
+            # search instead of silently discarding the entire discovery query.
+            if not candidates:
+                fallback_query = (
+                    f'"Sri Lankan" founder startup B2B '
+                    f'({query.replace(chr(34), "")})'
+                )
+                log(
+                    "  Web discovery found no candidates; running "
+                    "a narrower fallback search."
+                )
+                fallback_result = search(
+                    fallback_query,
+                    max_results=max(10, max_tavily_results),
+                )
+                fallback_text = combined_raw_text(
+                    fallback_result,
+                    char_limit=max_research_chars,
+                )
+                if fallback_text:
+                    fallback_extraction = safe_json_parse(
+                        llm(
+                            sri_lankan_founder_candidate_prompt(fallback_text),
+                            max_tokens=1800,
+                        )
+                    )
+                    fallback_candidates = fallback_extraction.get("candidates", [])
+                    if isinstance(fallback_candidates, list):
+                        candidates = fallback_candidates
+                        log(
+                            f"  Fallback extraction returned "
+                            f"{len(candidates)} candidates."
+                        )
+
             for candidate in candidates[:max_candidates_per_search]:
                 if not isinstance(candidate, dict):
                     continue
@@ -2516,14 +2587,25 @@ def run_sri_lankan_founder_sourcing(
                 portfolio_domain = normalize_domain(portfolio_url)
                 if portfolio_domain:
                     log(f"[VC Portfolio] {partner_name} — portfolio domain: {portfolio_domain}")
+                    # FreeSerp ranks the whole web, so a generic query plus a
+                    # local top-N domain filter can easily miss the VC's site.
+                    # Put the domain/name directly into the query and request
+                    # more results; the LLM can then identify portfolio pages.
                     portfolio_result = search(
-                        "portfolio companies startups",
-                        include_domains=[portfolio_domain],
+                        f'"{partner_name}" portfolio companies startups investments '
+                        f'site:{portfolio_domain}',
+                        max_results=max(12, max_tavily_results),
                     )
+                    if not combined_raw_text(portfolio_result, char_limit=2000):
+                        portfolio_result = search(
+                            f'"{partner_name}" portfolio companies startups investments',
+                            max_results=max(12, max_tavily_results),
+                        )
                 else:
                     log(f"[VC Portfolio] {partner_name} — no portfolio URL; using partner search.")
                     portfolio_result = search(
-                        f'"{partner_name}" portfolio companies startups investments'
+                        f'"{partner_name}" portfolio companies startups investments',
+                        max_results=max(12, max_tavily_results),
                     )
 
                 portfolio_text = combined_raw_text(
