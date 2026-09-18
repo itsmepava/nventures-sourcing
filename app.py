@@ -727,7 +727,7 @@ elif page == "Sri Lankan Founder Sourcing":
         unsafe_allow_html=True,
     )
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
 
     with c1:
         founder_target = st.number_input(
@@ -749,10 +749,23 @@ elif page == "Sri Lankan Founder Sourcing":
             key="sl_founder_research",
         )
 
+    with c3:
+        founder_partners = st.number_input(
+            "VC partners to scan",
+            min_value=1,
+            max_value=100,
+            value=12,
+            step=1,
+            key="sl_founder_partners",
+            help="Maximum number of VC/investor partners from Partner Database to scan for portfolio companies.",
+        )
+
     st.caption(
         "Companies are written into the existing Active Sourcing sheet. "
         "Founder evidence is preserved where matching founder/evidence "
-        "columns exist, and otherwise in Extra Notes."
+        "columns exist, and otherwise in Extra Notes. The run combines "
+        "Web Discovery with VC Portfolio scanning and deduplicates before "
+        "deep research/write."
     )
 
     openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
@@ -840,17 +853,21 @@ elif page == "Sri Lankan Founder Sourcing":
                     status.info(message)
 
             status.info(
-                "Searching for companies with verified Sri Lankan founders..."
+                "Searching the web + VC portfolios for companies with verified Sri Lankan founders..."
             )
 
             report = run_sri_lankan_founder_sourcing(
                 sourcing_ws=sourcing_ws,
+                partner_ws=_partner_ws,
+                control_ws=_control_ws,
                 openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
                 tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
                 openrouter_model=settings.openrouter_model,
                 target_companies=int(founder_target),
+                max_partners=int(founder_partners),
                 max_deep_research=int(founder_research),
                 max_candidates_per_search=8,
+                max_candidates_per_partner=10,
                 tavily_timeout=settings.tavily_timeout,
                 openrouter_timeout=settings.openrouter_timeout,
                 max_tavily_results=settings.max_tavily_results,
@@ -909,6 +926,8 @@ elif page == "Sri Lankan Founder Sourcing":
                         "Company HQ": item.get("headquarters", ""),
                         "Sector": item.get("sector", ""),
                         "Evidence URL": item.get("evidence_url", ""),
+                        "Source": item.get("source", ""),
+                        "Partner VC(s)": ", ".join(item.get("partner_vcs", []) or []),
                         "Sheet row": item.get("row", ""),
                     }
                     for item in report["accepted_details"]
