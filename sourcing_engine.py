@@ -2502,7 +2502,7 @@ def run_sri_lankan_founder_sourcing(
                         portfolio_sri_lankan_founder_candidate_prompt(
                             partner_name, portfolio_text
                         ),
-                        max_tokens=1400,
+                        max_tokens=2200,
                     )
                 )
                 candidates = extraction.get("candidates", [])
