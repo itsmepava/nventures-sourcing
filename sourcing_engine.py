@@ -10,7 +10,7 @@ logic below is the same pipeline, written as real functions.
 
 What the engine does:
   - Picks partners from the Partner sheet (least recently sourced first)
-  - Extracts portfolio candidates via Tavily + OpenRouter
+  - Extracts portfolio candidates via FreeSerp + OpenRouter
   - Researches each candidate
   - Enforces B2B / active-company / maturity rules
   - Deduplicates against Google Sheets and within the run
@@ -29,9 +29,11 @@ import time
 from datetime import datetime, timezone
 
 import requests
+from urllib.parse import quote_plus
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-TAVILY_URL = "https://api.tavily.com/search"
+FREESEPR_URL = "https://freeserp.ai/api.php"
+# FreeSerp is keyless; tavily_api_key remains only as a backwards-compatible parameter.
 
 FALLBACK_MODELS = []
 
@@ -647,51 +649,83 @@ def call_llm(
 
 
 # ============================================================================
-# TAVILY
+# FREE WEB SEARCH (FreeSerp)
 # ============================================================================
 
-def tavily_search(
+def freeserp_search(
     query,
     *,
-    api_key,
-    timeout,
-    max_results,
+    timeout=120,
+    max_results=5,
     include_domains=None,
     log=print,
 ):
-    if not api_key:
-        raise RuntimeError("TAVILY_API_KEY is missing.")
+    """Search the web through FreeSerp's free, keyless JSON endpoint."""
+    query = normalize_text(query)
+    if not query:
+        raise ValueError("Search query is empty.")
 
-    body = {
-        "api_key": api_key,
-        "query": query,
-        "search_depth": "advanced",
-        "max_results": max_results,
-        "include_answer": False,
-        "include_raw_content": False,
-        "include_images": False,
-    }
+    try:
+        max_results = max(1, min(int(max_results or 5), 20))
+    except (TypeError, ValueError):
+        max_results = 5
 
-    if include_domains:
-        body["include_domains"] = include_domains
+    request_url = (
+        f"{FREESEPR_URL}"
+        f"?index=web"
+        f"&q={quote_plus(query)}"
+        f"&size={max_results}"
+    )
 
     response = http_request_with_retry(
-        "POST",
-        TAVILY_URL,
-        json_body=body,
+        "GET",
+        request_url,
         timeout=timeout,
-        max_attempts=4,
-        label="Tavily",
+        max_attempts=3,
+        label="FreeSerp",
         log=log,
     )
 
-    data = response.json()
-
-    if "error" in data:
+    try:
+        data = response.json()
+    except ValueError as error:
         raise RuntimeError(
-            "Tavily error:\n" + json.dumps(data["error"], indent=2)
+            "FreeSerp returned a non-JSON response:\n"
+            + response.text[:1000]
+        ) from error
+
+    if isinstance(data, dict) and data.get("error"):
+        raise RuntimeError(
+            "FreeSerp error:\n" + json.dumps(data["error"], indent=2)
         )
 
+    if not isinstance(data, dict):
+        raise RuntimeError("FreeSerp returned an unexpected response format.")
+
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        results = []
+
+    # Keep compatibility with the old Tavily include_domains argument.
+    # Filtering is performed locally so we do not depend on a provider-specific
+    # filter parameter.
+    if include_domains:
+        allowed = {
+            normalize_domain(domain)
+            for domain in include_domains
+            if normalize_domain(domain)
+        }
+        if allowed:
+            filtered = []
+            for result in results:
+                domain = normalize_domain(result.get("url", ""))
+                if domain in allowed or any(
+                    domain.endswith("." + root) for root in allowed
+                ):
+                    filtered.append(result)
+            results = filtered
+
+    data["results"] = results
     return data
 
 
@@ -707,7 +741,13 @@ def combined_raw_text(search_response, char_limit=None):
 
     for result in search_response.get("results", []):
         title = normalize_text(result.get("title", ""))
-        content = normalize_text(result.get("content", ""))
+        content = normalize_text(
+            result.get("content")
+            or result.get("summary")
+            or result.get("snippet")
+            or result.get("description")
+            or ""
+        )
         url = normalize_text(result.get("url", ""))
         pieces.append(f"TITLE: {title}\nURL: {url}\nCONTENT: {content}")
 
@@ -1622,7 +1662,7 @@ def build_partner_sheet_row(headers, record):
 def discover_partners(
     *,
     openrouter_api_key,
-    tavily_api_key,
+    tavily_api_key=None,
     openrouter_model="openrouter/free",
     countries=None,
     partner_types=None,
@@ -1674,9 +1714,8 @@ def discover_partners(
         )
 
     def search(query):
-        return tavily_search(
+        return freeserp_search(
             query,
-            api_key=tavily_api_key,
             timeout=tavily_timeout,
             max_results=max_tavily_results,
             log=log,
@@ -2249,7 +2288,7 @@ def run_sri_lankan_founder_sourcing(
     partner_ws,
     control_ws=None,
     openrouter_api_key,
-    tavily_api_key,
+    tavily_api_key=None,
     openrouter_model="openrouter/free",
     target_companies=25,
     max_partners=12,
@@ -2271,8 +2310,6 @@ def run_sri_lankan_founder_sourcing(
     """
     if not openrouter_api_key:
         raise RuntimeError("OPENROUTER_API_KEY is missing.")
-    if not tavily_api_key:
-        raise RuntimeError("TAVILY_API_KEY is missing.")
     if partner_ws is None:
         raise RuntimeError("Partner Database worksheet is required for VC portfolio discovery.")
 
@@ -2318,9 +2355,8 @@ def run_sri_lankan_founder_sourcing(
         )
 
     def search(query, max_results=None, include_domains=None):
-        return tavily_search(
+        return freeserp_search(
             query,
-            api_key=tavily_api_key,
             timeout=tavily_timeout,
             max_results=max_results or max_tavily_results,
             include_domains=include_domains,
@@ -2760,7 +2796,7 @@ def run_sourcing(
     partner_ws,
     control_ws,
     openrouter_api_key,
-    tavily_api_key,
+    tavily_api_key=None,
     openrouter_model="openrouter/free",
     target_companies=25,
     max_partners=12,
@@ -2783,8 +2819,6 @@ def run_sourcing(
 
     if not openrouter_api_key:
         raise RuntimeError("OPENROUTER_API_KEY is missing.")
-    if not tavily_api_key:
-        raise RuntimeError("TAVILY_API_KEY is missing.")
 
     target_companies = int(target_companies)
     max_partners = int(max_partners)
@@ -2829,9 +2863,8 @@ def run_sourcing(
         )
 
     def search(query, include_domains=None, max_results=None):
-        return tavily_search(
+        return freeserp_search(
             query,
-            api_key=tavily_api_key,
             timeout=tavily_timeout,
             max_results=max_results or max_tavily_results,
             include_domains=include_domains,
