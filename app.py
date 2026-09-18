@@ -495,7 +495,6 @@ if page == "Dashboard":
     st.markdown("### System status")
 
     openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
-    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
     google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
 
     s1, s2, s3 = st.columns(3)
@@ -507,10 +506,7 @@ if page == "Dashboard":
             st.error("OpenRouter key missing")
 
     with s2:
-        if tavily_ready:
-            st.success("Tavily configured")
-        else:
-            st.error("Tavily key missing")
+        st.success("FreeSerp web search configured")
 
     with s3:
         if google_ready:
@@ -769,7 +765,6 @@ elif page == "Sri Lankan Founder Sourcing":
     )
 
     openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
-    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
     google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
 
     s1, s2, s3 = st.columns(3)
@@ -781,10 +776,7 @@ elif page == "Sri Lankan Founder Sourcing":
             st.error("OpenRouter key missing")
 
     with s2:
-        if tavily_ready:
-            st.success("Tavily configured")
-        else:
-            st.error("Tavily key missing")
+        st.success("FreeSerp web search configured")
 
     with s3:
         if google_ready:
@@ -798,7 +790,7 @@ elif page == "Sri Lankan Founder Sourcing":
         "🇱🇰 Start Sri Lankan Founder Sourcing",
         type="primary",
         use_container_width=True,
-        disabled=not (openrouter_ready and tavily_ready and google_ready),
+        disabled=not (openrouter_ready and google_ready),
     ):
         started = datetime.now(timezone.utc).isoformat()
 
@@ -1051,12 +1043,11 @@ elif page == "Partner Discovery":
     )
 
     openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
-    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
     google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
 
-    if not (openrouter_ready and tavily_ready and google_ready):
+    if not (openrouter_ready and google_ready):
         st.warning(
-            "OpenRouter, Tavily and Google Sheets must all be configured "
+            "OpenRouter and Google Sheets must be configured "
             "before partner discovery can run."
         )
 
@@ -1064,7 +1055,7 @@ elif page == "Partner Discovery":
         "🔎 Find Partners",
         type="primary",
         use_container_width=True,
-        disabled=not (openrouter_ready and tavily_ready and google_ready),
+        disabled=not (openrouter_ready and google_ready),
     ):
         progress = st.progress(0)
         status = st.empty()
