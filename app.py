@@ -10,7 +10,12 @@ import streamlit as st
 import database
 from config import settings
 from google_sheets import get_worksheets
-from sourcing_engine import run_sourcing, discover_partners, add_discovered_partners_to_sheet
+from sourcing_engine import (
+    run_sourcing,
+    discover_partners,
+    add_discovered_partners_to_sheet,
+    run_sri_lankan_founder_sourcing,
+)
 
 # ============================================================================
 # APP SETUP
@@ -406,7 +411,7 @@ if st.sidebar.button("Sign out", use_container_width=True):
 
 st.sidebar.divider()
 
-pages = ["Dashboard", "Partner Discovery", "Run History"]
+pages = ["Dashboard", "Sri Lankan Founder Sourcing", "Partner Discovery", "Run History"]
 if user["role"] == "admin":
     pages.append("Admin")
 
@@ -679,6 +684,269 @@ if page == "Dashboard":
                     "Download partial run log",
                     "\n".join(log_buffer),
                     file_name="sourcing_run_failed.log",
+                    mime="text/plain",
+                )
+
+
+# ============================================================================
+# SRI LANKAN FOUNDER SOURCING
+# ============================================================================
+
+elif page == "Sri Lankan Founder Sourcing":
+    st.markdown(
+        """
+        <div class="nv-hero">
+            <div class="nv-hero-title">Sri Lankan Founder Sourcing</div>
+            <div class="nv-hero-subtitle">
+                Find globally based companies with verified Sri Lankan
+                founders or co-founders.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Sourcing mandate")
+
+    st.markdown(
+        """
+        <div class="nv-card">
+            <div class="nv-card-title">Founder-based sourcing</div>
+            <div class="nv-card-text">
+                <b>Founder:</b> at least one founder/co-founder must be
+                verifiably Sri Lankan &nbsp; • &nbsp;
+                <b>Company geography:</b> no restriction &nbsp; • &nbsp;
+                <b>B2B:</b> required
+                <br><br>
+                The system does not infer nationality from a name, surname,
+                location or other indirect signals. A public evidence trail is
+                required before a company is added.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        founder_target = st.number_input(
+            "Target new companies",
+            min_value=1,
+            max_value=100,
+            value=25,
+            step=1,
+            key="sl_founder_target",
+        )
+
+    with c2:
+        founder_research = st.number_input(
+            "Deep research limit",
+            min_value=1,
+            max_value=200,
+            value=int(settings.max_deep_research),
+            step=1,
+            key="sl_founder_research",
+        )
+
+    st.caption(
+        "Companies are written into the existing Active Sourcing sheet. "
+        "Founder evidence is preserved where matching founder/evidence "
+        "columns exist, and otherwise in Extra Notes."
+    )
+
+    openrouter_ready = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+    tavily_ready = bool(os.getenv("TAVILY_API_KEY", "").strip())
+    google_ready = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip())
+
+    s1, s2, s3 = st.columns(3)
+
+    with s1:
+        if openrouter_ready:
+            st.success("OpenRouter configured")
+        else:
+            st.error("OpenRouter key missing")
+
+    with s2:
+        if tavily_ready:
+            st.success("Tavily configured")
+        else:
+            st.error("Tavily key missing")
+
+    with s3:
+        if google_ready:
+            st.success("Google Sheets configured")
+        else:
+            st.error("Google service account missing")
+
+    st.divider()
+
+    if st.button(
+        "🇱🇰 Start Sri Lankan Founder Sourcing",
+        type="primary",
+        use_container_width=True,
+        disabled=not (openrouter_ready and tavily_ready and google_ready),
+    ):
+        started = datetime.now(timezone.utc).isoformat()
+
+        progress = st.progress(0)
+        status = st.empty()
+        st.markdown("### Live log")
+
+        log_placeholder = st.empty()
+        log_buffer = []
+        last_render = [0.0]
+
+        LOG_VISIBLE_LINES = 300
+        LOG_MIN_REDRAW_SECONDS = 0.3
+
+        def render_founder_log(force=False):
+            now = time.monotonic()
+            if not force and now - last_render[0] < LOG_MIN_REDRAW_SECONDS:
+                return
+            last_render[0] = now
+            log_placeholder.code(
+                "\n".join(log_buffer[-LOG_VISIBLE_LINES:]) or "Waiting...",
+                language="log",
+            )
+
+        def on_founder_log(line):
+            log_buffer.append(line)
+            render_founder_log()
+
+        render_founder_log(force=True)
+
+        try:
+            status.info("Connecting to Google Sheets...")
+
+            (
+                _sh,
+                sourcing_ws,
+                _partner_ws,
+                _control_ws,
+                _partner_name,
+            ) = get_worksheets(
+                settings.spreadsheet_id,
+                settings.sourcing_tab,
+                settings.control_tab,
+                settings.partner_tab_candidates,
+            )
+
+            status.success("Google Sheets connected.")
+
+            def on_founder_progress(value, message=""):
+                progress.progress(max(0, min(100, int(value))))
+                if message:
+                    status.info(message)
+
+            status.info(
+                "Searching for companies with verified Sri Lankan founders..."
+            )
+
+            report = run_sri_lankan_founder_sourcing(
+                sourcing_ws=sourcing_ws,
+                openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+                tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+                openrouter_model=settings.openrouter_model,
+                target_companies=int(founder_target),
+                max_deep_research=int(founder_research),
+                max_candidates_per_search=8,
+                tavily_timeout=settings.tavily_timeout,
+                openrouter_timeout=settings.openrouter_timeout,
+                max_tavily_results=settings.max_tavily_results,
+                max_research_chars=settings.max_research_chars,
+                request_delay=settings.request_delay,
+                progress_callback=on_founder_progress,
+                log_callback=on_founder_log,
+            )
+
+            report.setdefault("accepted", [])
+            report.setdefault("rejected", [])
+            report.setdefault("duplicates", [])
+            report.setdefault("partner_errors", [])
+            report.setdefault("accepted_details", [])
+
+            finished = datetime.now(timezone.utc).isoformat()
+
+            run_id = database.save_run(
+                user["email"],
+                started,
+                finished,
+                int(founder_target),
+                report,
+            )
+
+            progress.progress(100)
+            render_founder_log(force=True)
+            status.success(f"Run #{run_id} completed.")
+
+            st.download_button(
+                "Download run log",
+                "\n".join(log_buffer),
+                file_name=f"sri_lankan_founder_run_{run_id}.log",
+                mime="text/plain",
+            )
+
+            accepted = report["accepted"]
+            rejected = report["rejected"]
+            duplicates = report["duplicates"]
+            errors = report["partner_errors"]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Added", len(accepted))
+            m2.metric("Duplicates", len(duplicates))
+            m3.metric("Rejected", len(rejected))
+            m4.metric("Research/API errors", len(errors))
+
+            if accepted:
+                st.markdown("### New companies")
+
+                display_rows = [
+                    {
+                        "Company": item.get("company", ""),
+                        "Founder": item.get("founder", ""),
+                        "Founder evidence": item.get("founder_evidence", ""),
+                        "Company HQ": item.get("headquarters", ""),
+                        "Sector": item.get("sector", ""),
+                        "Evidence URL": item.get("evidence_url", ""),
+                        "Sheet row": item.get("row", ""),
+                    }
+                    for item in report["accepted_details"]
+                ]
+
+                st.dataframe(
+                    display_rows,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No new Sri Lankan-founder companies were accepted.")
+
+            if rejected:
+                with st.expander(f"Rejected ({len(rejected)})"):
+                    st.write(rejected)
+
+            if duplicates:
+                with st.expander(f"Duplicates ({len(duplicates)})"):
+                    st.write(duplicates)
+
+            if errors:
+                with st.expander(f"Research/API errors ({len(errors)})"):
+                    st.write(errors)
+
+            with st.expander("Full run report"):
+                st.json({k: v for k, v in report.items() if k != "log"})
+
+        except Exception as exc:
+            render_founder_log(force=True)
+            st.error("The Sri Lankan founder sourcing run failed.")
+            st.exception(exc)
+
+            if log_buffer:
+                st.download_button(
+                    "Download partial run log",
+                    "\n".join(log_buffer),
+                    file_name="sri_lankan_founder_run_failed.log",
                     mime="text/plain",
                 )
 
