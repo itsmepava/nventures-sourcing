@@ -598,8 +598,8 @@ if page == "Dashboard":
                 max_research_chars=settings.max_research_chars,
                 request_delay=settings.request_delay,
                 progress_callback=on_progress,
-                log_callback=on_log,
-            )
+                log_callback=on_log,)
+            
 
             finished = datetime.now(timezone.utc).isoformat()
 
