@@ -583,22 +583,24 @@ if page == "Dashboard":
             )
 
             report = run_sourcing(
-                sourcing_ws=sourcing_ws,
-                partner_ws=partner_ws,
-                control_ws=control_ws,
-                openrouter_api_key=os.getenv("OPENROUTER_API_KEY", 
-                openrouter_model=settings.openrouter_model,
-                target_companies=int(target),
-                max_partners=int(max_partners),
-                max_deep_research=int(max_research),
-                max_candidates_per_partner=settings.max_candidates_per_partner,
-                max_total_funding=settings.max_total_funding,
-                max_team_size_warning=settings.max_team_size_warning,
-                openrouter_timeout=settings.openrouter_timeout,
-                max_research_chars=settings.max_research_chars,
-                request_delay=settings.request_delay,
-                progress_callback=on_progress,
-                log_callback=on_log,)
+    sourcing_ws=sourcing_ws,
+    partner_ws=partner_ws,
+    control_ws=control_ws,
+    openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),  # <-- Closed os.getenv here
+    openrouter_model=settings.openrouter_model,
+    target_companies=int(target),
+    max_partners=int(max_partners),
+    max_deep_research=int(max_research),
+    max_candidates_per_partner=settings.max_candidates_per_partner,
+    max_total_funding=settings.max_total_funding,
+    max_team_size_warning=settings.max_team_size_warning,
+    openrouter_timeout=settings.openrouter_timeout,
+    max_research_chars=settings.max_research_chars,
+    request_delay=settings.request_delay,
+    progress_callback=on_progress,
+    log_callback=on_log,
+)  
+
             
 
             finished = datetime.now(timezone.utc).isoformat()
