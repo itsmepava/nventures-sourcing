@@ -1771,32 +1771,42 @@ def add_discovered_partners_to_sheet(
 
 def candidate_prompt(partner_name, portfolio_text):
     return (
-        "You are an investment sourcing analyst helping nVentures identify\n"
-        "early-stage B2B startups for Fund II.\n\n"
-        "PARTNER:\n"
-        f"{partner_name}\n\n"
-        "REQUIREMENTS:\n\n"
-        "1. B2B:\n"
-        "   Primarily sells to businesses, institutions or organizations.\n\n"
-        "   Exclude clearly mature/growth companies.\n\n"
-        "2. REAL COMPANY:\n"
-        "   Must have credible evidence of an actual operating company/product.\n\n"
-        "There is no geographic restriction. Companies headquartered anywhere "
-        "in the world are eligible.\n\n"
+        "You are an investment sourcing analyst helping nVentures identify "
+        "real B2B companies from a venture capital partner's portfolio research.\n\n"
+        f"PARTNER:\n{partner_name}\n\n"
+        "TASK:\n"
+        "Extract portfolio companies that are actually evidenced in the supplied "
+        "web search results. Search results may come from the VC's own website, "
+        "company websites, news articles, databases, or other third-party sources. "
+        "Do NOT require the result URL to belong to the VC. A company can be a valid "
+        "candidate when the title/snippet/content explicitly connects that company "
+        "to the named partner.\n\n"
+        "REQUIREMENTS:\n"
+        "1. B2B: Prefer companies that primarily sell to businesses, institutions, "
+        "or organizations.\n"
+        "2. REAL COMPANY: There must be credible evidence of an actual operating "
+        "company/product.\n"
+        "3. No geographic restriction. Companies headquartered anywhere in the world "
+        "are eligible.\n"
+        "4. Funding amount and funding stage are NOT screening criteria. Do not "
+        "exclude a company because it raised a large amount or completed Series A "
+        "or later.\n"
+        "5. Do not invent portfolio relationships. Only extract a company when the "
+        "supplied evidence supports that it is connected to the partner.\n"
+        "6. Do not return the VC itself, people, funds, or generic portfolio-page "
+        "categories as companies.\n\n"
         "Return ONLY valid JSON:\n\n"
         "{{\n"
         '  "candidates": [\n'
         "    {{\n"
         '      "company_name": "Company Name",\n'
         '      "sector_guess": "Sector",\n'
-        '      "why_it_fits": "Short factual explanation."\n'
+        '      "why_it_fits": "Short factual explanation including the portfolio evidence."\n'
         "    }}\n"
         "  ]\n"
         "}}\n\n"
-        "If no suitable candidates exist:\n\n"
-        "{{\n"
-        '  "candidates": []\n'
-        "}}\n\n"
+        "If the supplied evidence genuinely contains no identifiable portfolio "
+        "companies, return an empty candidates array.\n\n"
         "WEB CONTENT:\n"
         f"{portfolio_text}\n"
     )
@@ -2839,20 +2849,71 @@ def run_sourcing(
             portfolio_domain = normalize_domain(portfolio_url)
 
             # --- portfolio search ---
+            # FreeSerp is a general web-results API, not Tavily's research/extract
+            # endpoint. Do NOT require the top-N results to come from the VC's own
+            # domain: portfolio evidence often appears in company announcements,
+            # news, databases, and other third-party pages.
+            portfolio_queries = [
+                f'"{partner_name}" portfolio companies investments startups',
+                f'"{partner_name}" invested in companies portfolio',
+            ]
             if portfolio_domain:
-                log(f"Portfolio domain: {portfolio_domain}")
-                portfolio_result = search(
-                    "portfolio companies startups",
-                    include_domains=[portfolio_domain],
+                portfolio_queries.append(
+                    f'site:{portfolio_domain} portfolio companies investments startups'
+                )
+                log(
+                    f"Portfolio domain: {portfolio_domain}; running "
+                    f"{len(portfolio_queries)} targeted searches."
                 )
             else:
-                log("No portfolio URL found. Using general partner search.")
-                portfolio_result = search(
-                    f'"{partner_name}" portfolio companies startups B2B seed'
+                log(
+                    f"No portfolio URL found; running "
+                    f"{len(portfolio_queries)} general partner searches."
                 )
 
+            merged_results = []
+            seen_result_keys = set()
+
+            for query_index, portfolio_query in enumerate(portfolio_queries, start=1):
+                log(f"  Portfolio search {query_index}/{len(portfolio_queries)}")
+                search_result = search(
+                    portfolio_query,
+                    max_results=max(12, max_freeserp_results),
+                )
+
+                for result in (search_result or {}).get("results", []):
+                    if not isinstance(result, dict):
+                        continue
+                    result_url = normalize_text(
+                        result.get("url") or result.get("link") or ""
+                    )
+                    result_title = normalize_text(
+                        result.get("title") or result.get("name") or ""
+                    )
+                    result_content = normalize_text(
+                        result.get("content")
+                        or result.get("summary")
+                        or result.get("snippet")
+                        or result.get("description")
+                        or ""
+                    )
+                    result_key = (
+                        result_url.lower()
+                        or f"{result_title.lower()}|{result_content[:250].lower()}"
+                    )
+                    if result_key in seen_result_keys:
+                        continue
+                    seen_result_keys.add(result_key)
+                    merged_results.append(result)
+
+            portfolio_result = {"results": merged_results}
             portfolio_text = combined_raw_text(
                 portfolio_result, char_limit=max_research_chars
+            )
+
+            log(
+                f"Collected {len(merged_results)} unique search results "
+                f"for {partner_name}."
             )
 
             if not portfolio_text:
@@ -2867,7 +2928,7 @@ def run_sourcing(
             extraction = safe_json_parse(
                 llm(
                     candidate_prompt(partner_name, portfolio_text),
-                    max_tokens=1400,
+                    max_tokens=2200,
                 )
             )
 
