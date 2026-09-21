@@ -32,8 +32,8 @@ import requests
 from urllib.parse import quote_plus
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-FREESEPR_URL = "https://freeserp.ai/api.php"
-# FreeSerp is keyless; tavily_api_key remains only as a backwards-compatible parameter.
+FREESERP_URL = "https://freeserp.ai/api.php"
+# FreeSerp is keyless; FreeSerp is keyless; no search API key is required.
 
 FALLBACK_MODELS = []
 
@@ -671,7 +671,7 @@ def freeserp_search(
         max_results = 5
 
     request_url = (
-        f"{FREESEPR_URL}"
+        f"{FREESERP_URL}"
         f"?index=web"
         f"&q={quote_plus(query)}"
         f"&size={max_results}"
@@ -878,208 +878,6 @@ def clean_ai_record(record):
                 break
 
     return cleaned
-
-
-# ============================================================================
-# DETERMINISTIC FUNDING / MATURITY FILTER
-# ============================================================================
-
-MONEY_PATTERNS = [
-    (r"\$\s*([\d,.]+)\s*(billion|bn)\b", 1_000_000_000),
-    (r"\$\s*([\d,.]+)\s*(million|mn|m)\b", 1_000_000),
-    (r"\$\s*([\d,.]+)\s*(thousand|k)\b", 1_000),
-    (r"usd\s*([\d,.]+)\s*(billion|bn)\b", 1_000_000_000),
-    (r"usd\s*([\d,.]+)\s*(million|mn|m)\b", 1_000_000),
-    (r"usd\s*([\d,.]+)\s*(thousand|k)\b", 1_000),
-]
-
-MATURE_TERMS = [
-    "series b",
-    "series c",
-    "series d",
-    "series e",
-    "series f",
-    "series g",
-    "series h",
-    "ipo",
-    "publicly listed",
-    "public company",
-    "late stage",
-    "growth stage",
-    "pre-ipo",
-]
-
-# Phrases within a short window before a match that flip its meaning, e.g.
-# "no plans for an IPO" or "not raising a Series A". Checked as a plain
-# substring of the preceding text, so keep entries lowercase and simple.
-NEGATION_CUES = [
-    "no ",
-    "not ",
-    "never ",
-    "without ",
-    "unlikely ",
-    "no plans for",
-    "no plans to",
-    "not planning",
-    "not currently",
-    "does not",
-    "doesn't",
-    "did not",
-    "didn't",
-    "has not",
-    "hasn't",
-    "have not",
-    "haven't",
-    "isn't",
-    "is not",
-    "rules out",
-    "ruled out",
-    "denies",
-    "denied",
-    "no current plans",
-    "unlike",
-]
-
-NEGATION_WINDOW_CHARS = 60
-SNIPPET_CONTEXT_CHARS = 60
-
-
-def _is_negated(combined_lower, match_start):
-    """True if a negation cue appears shortly before the match.
-
-    A plain 'term in text' substring check has no concept of context, so it
-    treats "no plans for an IPO" the same as an actual IPO. This looks at
-    the text immediately preceding the match for a negating phrase.
-    """
-    context_start = max(0, match_start - NEGATION_WINDOW_CHARS)
-    return any(
-        cue in combined_lower[context_start:match_start] for cue in NEGATION_CUES
-    )
-
-
-def _find_term_match(combined, combined_lower, term):
-    """Find an un-negated, word-bounded occurrence of term.
-
-    Returns a short snippet of surrounding text for logging, or None.
-    Word boundaries matter: a plain substring check on 'ipo' matches inside
-    ordinary words like 'Chipotle' or 'shipowner', producing false
-    maturity rejections that have nothing to do with the candidate company.
-    """
-    pattern = re.compile(r"\b" + re.escape(term) + r"\b")
-
-    for match in pattern.finditer(combined_lower):
-        if _is_negated(combined_lower, match.start()):
-            continue
-
-        start = max(0, match.start() - SNIPPET_CONTEXT_CHARS)
-        end = min(len(combined), match.end() + SNIPPET_CONTEXT_CHARS)
-        return normalize_text(combined[start:end])
-
-    return None
-
-
-def parse_money_values(text):
-    text = normalize_text(text).lower()
-    if not text:
-        return []
-
-    values = []
-
-    for pattern, multiplier in MONEY_PATTERNS:
-        for match in re.finditer(pattern, text):
-            try:
-                number = float(match.group(1).replace(",", ""))
-                values.append(number * multiplier)
-            except (TypeError, ValueError):
-                pass
-
-    return values
-
-
-def funding_check(record, research_text, max_total_funding):
-    combined = " ".join(
-        [
-            normalize_text(record.get("Last Round", "")),
-            normalize_text(record.get("Stage", "")),
-            normalize_text(research_text),
-        ]
-    )
-
-    combined_lower = combined.lower()
-
-    # Reject clearly mature funding stages.
-    # Series A is intentionally NOT included here because a company can
-    # mention a planned/future Series A while still being seed-stage.
-    for term in MATURE_TERMS:
-        snippet = _find_term_match(combined, combined_lower, term)
-        if snippet:
-            return False, (
-                f"Maturity/funding evidence contains '{term}': "
-                f"\"...{snippet}...\""
-            )
-
-    # Only reject Series A when the evidence indicates that the company
-    # has actually completed/raised/closed a Series A.
-    series_a_patterns = [
-        r"\braised\s+(?:a\s+)?series\s+a\b",
-        r"\bclosed\s+(?:a\s+)?series\s+a\b",
-        r"\bcompleted\s+(?:a\s+)?series\s+a\b",
-        r"\bannounced\s+(?:a\s+)?series\s+a\b",
-        r"\bseries\s+a\s+round\b",
-        r"\bseries\s+a\s+funding\b",
-        r"\bseries\s+a\s+financing\b",
-        r"\bseries\s+a\s+of\s+\$",
-    ]
-
-    for pattern in series_a_patterns:
-        match = re.search(pattern, combined_lower)
-
-        if match and not _is_negated(combined_lower, match.start()):
-            start = max(0, match.start() - SNIPPET_CONTEXT_CHARS)
-            end = min(len(combined), match.end() + SNIPPET_CONTEXT_CHARS)
-            snippet = normalize_text(combined[start:end])
-
-            return False, (
-                f"Completed Series A evidence: \"...{snippet}...\""
-            )
-
-    # Funding amount check.
-    money_values = parse_money_values(combined)
-
-    if money_values:
-        maximum = max(money_values)
-
-        if maximum > max_total_funding:
-            return False, (
-                f"Funding evidence around ${maximum:,.0f} exceeds the "
-                f"${max_total_funding:,.0f} limit."
-            )
-
-    return True, ""
-
-
-def maturity_flag(record, research_text, max_total_funding=None):
-    """Return a warning only for clearly mature/growth-stage evidence."""
-    combined = " ".join(
-        [
-            normalize_text(record.get("Stage", "")),
-            normalize_text(record.get("Last Round", "")),
-            normalize_text(research_text),
-        ]
-    )
-
-    combined_lower = combined.lower()
-    warnings = []
-
-    for term in MATURE_TERMS:
-        snippet = _find_term_match(combined, combined_lower, term)
-        if snippet:
-            warnings.append(f"mentions '{term}'")
-
-    if warnings:
-        return "Maturity check flagged: " + "; ".join(warnings) + "."
-
-    return ""
 
 
 # ============================================================================
@@ -1698,14 +1496,13 @@ def build_partner_sheet_row(headers, record):
 def discover_partners(
     *,
     openrouter_api_key,
-    tavily_api_key=None,
     openrouter_model="openrouter/free",
     countries=None,
     partner_types=None,
     max_per_search=12,
-    tavily_timeout=120,
+    freeserp_timeout=120,
     openrouter_timeout=120,
-    max_tavily_results=8,
+    max_freeserp_results=8,
     max_research_chars=12000,
     request_delay=2.0,
     progress_callback=None,
@@ -1752,8 +1549,8 @@ def discover_partners(
     def search(query):
         return freeserp_search(
             query,
-            timeout=tavily_timeout,
-            max_results=max_tavily_results,
+            timeout=freeserp_timeout,
+            max_results=max_freeserp_results,
             log=log,
         )
 
@@ -2052,7 +1849,7 @@ def research_prompt(candidate_name, initial_context, deep_text):
 
 def verification_prompt(researched_name, deep_text):
     return (
-        "You are the final screening analyst for an early-stage VC sourcing\n"
+        "You are the final screening analyst for an nVentures VC sourcing\n"
         "pipeline.\n\n"
         "Company:\n"
         f"{researched_name}\n\n"
@@ -2066,7 +1863,6 @@ def verification_prompt(researched_name, deep_text):
         "{{\n"
         '  "b2b": true,\n'
         '  "active_company": true,\n'
-        '  "too_mature": false,\n'
         '  "confidence": "high",\n'
         '  "reason": "Factual explanation"\n'
         "}}\n\n"
@@ -2077,9 +1873,9 @@ def verification_prompt(researched_name, deep_text):
         "ACTIVE COMPANY:\n"
         "There should be credible evidence that the company is an actual\n"
         "operating business with a real product or service.\n\n"
-        "MATURITY:\n"
-        "Reject only companies that are clearly mature/growth-stage businesses\n"
-        "and are no longer appropriate for an early-stage sourcing pipeline.\n\n"
+        "MATURITY / STAGE:\n"
+        "Company maturity and funding stage are NOT screening criteria.\n"
+        "Do not reject a company because it is Series A, later-stage, or mature.\n\n"
         "FUNDING:\n"
         "Funding amount is NOT a screening criterion.\n"
         "Do NOT reject because total funding exceeds any particular amount.\n\n"
@@ -2324,16 +2120,15 @@ def run_sri_lankan_founder_sourcing(
     partner_ws,
     control_ws=None,
     openrouter_api_key,
-    tavily_api_key=None,
     openrouter_model="openrouter/free",
     target_companies=25,
     max_partners=12,
     max_deep_research=45,
     max_candidates_per_search=8,
     max_candidates_per_partner=10,
-    tavily_timeout=120,
+    freeserp_timeout=120,
     openrouter_timeout=120,
-    max_tavily_results=5,
+    max_freeserp_results=5,
     max_research_chars=14000,
     request_delay=1.0,
     require_b2b=True,
@@ -2393,8 +2188,8 @@ def run_sri_lankan_founder_sourcing(
     def search(query, max_results=None, include_domains=None):
         return freeserp_search(
             query,
-            timeout=tavily_timeout,
-            max_results=max_results or max_tavily_results,
+            timeout=freeserp_timeout,
+            max_results=max_results or max_freeserp_results,
             include_domains=include_domains,
             log=log,
         )
@@ -2494,7 +2289,7 @@ def run_sri_lankan_founder_sourcing(
                 )
                 fallback_result = search(
                     fallback_query,
-                    max_results=max(10, max_tavily_results),
+                    max_results=max(10, max_freeserp_results),
                 )
                 fallback_text = combined_raw_text(
                     fallback_result,
@@ -2594,18 +2389,18 @@ def run_sri_lankan_founder_sourcing(
                     portfolio_result = search(
                         f'"{partner_name}" portfolio companies startups investments '
                         f'site:{portfolio_domain}',
-                        max_results=max(12, max_tavily_results),
+                        max_results=max(12, max_freeserp_results),
                     )
                     if not combined_raw_text(portfolio_result, char_limit=2000):
                         portfolio_result = search(
                             f'"{partner_name}" portfolio companies startups investments',
-                            max_results=max(12, max_tavily_results),
+                            max_results=max(12, max_freeserp_results),
                         )
                 else:
                     log(f"[VC Portfolio] {partner_name} — no portfolio URL; using partner search.")
                     portfolio_result = search(
                         f'"{partner_name}" portfolio companies startups investments',
-                        max_results=max(12, max_tavily_results),
+                        max_results=max(12, max_freeserp_results),
                     )
 
                 portfolio_text = combined_raw_text(
@@ -2878,21 +2673,17 @@ def run_sourcing(
     partner_ws,
     control_ws,
     openrouter_api_key,
-    tavily_api_key=None,
     openrouter_model="openrouter/free",
     target_companies=25,
     max_partners=12,
     max_candidates_per_partner=10,
     max_deep_research=45,
-    max_total_funding=3_000_000,
-    max_team_size_warning=30,
-    tavily_timeout=120,
+    freeserp_timeout=120,
     openrouter_timeout=120,
-    max_tavily_results=5,
+    max_freeserp_results=5,
     max_research_chars=14000,
     request_delay=1.0,
     require_b2b=True,
-    require_early_stage=True,
     respect_relevance_flag=True,
     progress_callback=None,
     log_callback=None,
@@ -2947,8 +2738,8 @@ def run_sourcing(
     def search(query, include_domains=None, max_results=None):
         return freeserp_search(
             query,
-            timeout=tavily_timeout,
-            max_results=max_results or max_tavily_results,
+            timeout=freeserp_timeout,
+            max_results=max_results or max_freeserp_results,
             include_domains=include_domains,
             log=log,
         )
@@ -3196,8 +2987,6 @@ def run_sourcing(
                 active_company = (
                     verification.get("active_company", False) is True
                 )
-                too_mature = verification.get("too_mature", True) is True
-
                 confidence = normalize_text(
                     verification.get("confidence", "")
                 ).lower()
@@ -3208,8 +2997,6 @@ def run_sourcing(
                     failures.append("B2B requirement not verified")
                 if not active_company:
                     failures.append("Active-company status not verified")
-                if too_mature:
-                    failures.append("Company appears too mature")
                 if confidence == "low":
                     failures.append("Verification confidence is low")
 
@@ -3222,25 +3009,10 @@ def run_sourcing(
                     )
                     continue
 
-                maturity_note = maturity_flag(
-                    record, deep_text, max_total_funding
-                )
+                maturity_note = ""
 
                 # --- accept ---
                 log(f"  ACCEPTED - {researched_name}")
-
-                team_size_digits = re.findall(
-                    r"\d+", normalize_text(record.get("Team Size", ""))
-                )
-                if team_size_digits:
-                    try:
-                        if int(team_size_digits[0]) > int(max_team_size_warning):
-                            log(
-                                f"  WARNING: team size {team_size_digits[0]} "
-                                f"exceeds {max_team_size_warning}"
-                            )
-                    except (TypeError, ValueError):
-                        pass
 
                 if maturity_note:
                     log(f"  WARNING: {maturity_note}")
