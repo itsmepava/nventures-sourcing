@@ -63,7 +63,7 @@ class Settings:
     )
 
     max_freeserp_results: int = int(
-        os.getenv("MAX_FREESEPR_RESULTS", "10")
+        os.getenv("MAX_FREESERP_RESULTS", "10")
     )
 
 
