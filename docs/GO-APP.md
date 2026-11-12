@@ -65,7 +65,7 @@ Values saved in **Settings** (sheet IDs, tabs, expected account, query) are stor
 
 ## Daily-use features
 
-Light/dark/system theme without flash, compact density, saved per-table filters, search, sort, pagination, shortlist (star), CSV export with formula neutralisation, live job progress with cancel, job history and audit log, readiness panel with disabled actions that explain what is missing, command palette (**Ctrl/⌘ K**), shortcuts (**?**, `/`, `g` + letter, `j/k`, `x`, `s`, `t`, `c`, **Esc**), focus-trapped dialogs that return focus, mobile layout, reduced-motion support.
+Light/dark/system theme without flash (labelled control in the top bar; *System* follows OS changes live), links to the verified sheet row, an *Across nVentures* panel linking the same company across pitches, sourcing and activity, job **Retry**, unsaved-edit protection, inline validation, duplicate-click protection, offline banner with automatic reconnect, clear-filters, compact density, saved per-table filters, search, sort, pagination, shortlist (star), CSV export with formula neutralisation, live job progress with cancel, job history and audit log, readiness panel with disabled actions that explain what is missing, command palette (**Ctrl/⌘ K**), shortcuts (**?**, `/`, `g` + letter, `j/k`, `x`, `s`, `t`, `c`, **Esc**), focus-trapped dialogs that return focus, mobile layout, reduced-motion support.
 
 ## Connect Google (live mode) — the one step only you can do
 

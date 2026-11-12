@@ -12,7 +12,7 @@ Point at the yellow *Demo data* badge and banner: Gmail, Sheets and websites are
 **0:40 — Inbound pitches (Pitch inbox → Import from Gmail → Start import)**
 > “It reads our pitch mailbox read-only — it can't send, archive or delete anything. Each email is handled separately, so two companies submitted through the same web form don't get merged.”
 
-When the job finishes, read the counter line: *15 new · 7 ready · 4 review · 3 skipped · 1 duplicate · 7 verified in sheet*.
+When the job finishes, read the counter line: *16 new · 8 ready · 4 review · 3 skipped · 1 duplicate · 8 verified in sheet*.
 > “Clear submissions went straight to our inbound sheet and were checked by reading the row back. Newsletters and test forms were skipped. Anything unclear waits for a human.”
 
 **1:40 — Review one (click *Tidewell (demo)*)**
@@ -32,7 +32,9 @@ Watch the live events. When finished: *9/10 accepted · 4 rejected · 2 need res
 Click *Overfunded (demo)* → “Series A and $21M total: rejected.” Click *OutsideHQ (demo)* → “Founders are from India, but the company is headquartered in Austin — founder nationality doesn't count.” Click *OneRound (demo)* → “Only a single round amount, not total funding — so it's *needs research*, not accepted.”
 
 **3:55 — Evidence (Companies → open *FactorySignal (demo)*)**
-> “Every accepted company carries the exact sentence and page that proves each requirement: HQ, B2B, active, stage and total funding.”
+> “Every accepted company carries the exact sentence and page that proves each requirement: HQ, B2B, active, stage and total funding — and a link straight to its verified row in the sheet.”
+
+Optional: open the pitch *GridLoom (demo)* → *Across nVentures* shows the same company was also found by sourcing.
 
 **4:20 — Safe to repeat (Pitch inbox → Import again; or Sourcing → Start run again)**
 > “Running it again adds nothing: no duplicate companies and no duplicate rows. If the network drops mid-write, it reconciles against the sheet before writing again.”

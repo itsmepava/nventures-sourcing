@@ -108,7 +108,7 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 	rep.Inbound = in
 	fail(in["status"] == "completed", fmt.Sprintf("inbound import status %v: %v", in["status"], in["message"]))
 	fail(num(in, "imported") == len(fixtures.Mailbox()), "every fixture message imported once")
-	fail(num(in, "verified") == 7 && num(in, "review") == 4 && num(in, "skipped") == 3 && num(in, "duplicates") == 1, fmt.Sprintf("inbound triage counts: %v", in["counters"]))
+	fail(num(in, "verified") == 8 && num(in, "review") == 4 && num(in, "skipped") == 3 && num(in, "duplicates") == 1, fmt.Sprintf("inbound triage counts: %v", in["counters"]))
 	rep.Steps = append(rep.Steps, fmt.Sprintf("Inbox import & sync: %v", in["message"]))
 
 	// Approve one pitch from review and sync it immediately without rescanning.

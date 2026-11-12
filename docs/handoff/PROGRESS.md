@@ -35,6 +35,20 @@ Updated 12 November 2026 by Claude Code on branch `claude/go-redesign`. Every it
 | Bugs found in QA and fixed | sentence splitter truncated "USD 1.2 million" to $1 (regression tests added with exact amounts for all nine companies); CSP blocked inline styles; `[hidden]` overridden by CSS; `null` rendered as text; null JSON lists |
 | Dependencies | direct: `modernc.org/sqlite v1.62.0`, `golang.org/x/net v0.62.0`; linked into binary: 10 modules, all MIT/BSD-3 |
 
+## v0.3.0-alpha.2 audit and completion (12 Nov 2026)
+
+Audit against CLAUDE.md / IMPLEMENTATION.md / ACCEPTANCE.md found dark mode **present** in alpha.1 but only reachable via an unlabelled icon, `t` or Settings, and *System* did not follow OS changes in all browsers. Real gaps found and fixed: no clear-filters action; pitch CSV ignored filters; no visible table loading state, offline state or retry on errors; no duplicate-click protection; no unsaved-edit protection or inline validation; no job retry; no links to the actual sheet row; no cross-module view of one company; themeless login page; invisible keyboard row cursor; outbound connection test failing against the fixture (`1:1` range); stale assets possible after upgrade.
+
+| Check | Result |
+|---|---|
+| `go vet ./...`, `go test -count=1 ./...` | clean / pass (10 packages) |
+| `go test -race` jobs, store, httpapp, discovery | pass |
+| `nventures rehearse` | PASS — 16 messages → 8 verified rows, 4 review, 3 skipped, 1 duplicate; sourcing 9/10 Partial, 9 verified rows; repeat: 0 new records, 0 new rows |
+| Schema upgrade 1 → 2 | unit test + copies of the user's demo DB and of the migrated-Python Go DB: all records identical after upgrade |
+| Live app | user's app on 8765 restarted as 0.3.0-alpha.2 via `start-go.sh`; schema 2; data kept (pre-upgrade backup in `.handoff/pre-upgrade-demo-20261112-145902.db`) |
+| Browser QA (Chromium, fixture data) | Light/Dark/System via labelled control; explicit Dark kept under light OS and after reload; System followed a live OS switch; `g c`, `g t`, `t`, `j`, `/`, Ctrl+K, Escape; unsaved-edit guard on Escape and on navigation (URL restored on cancel); inline validation focuses the bad field; double-click started one job; clear filters + filtered empty state; search persisted across reload; offline banner and auto-reconnect; Retry created job with `retry_of`; row link opened the exact verified row; cross-module panel linked GridLoom pitch ↔ company; connection test: 3/3 OK, 0 rows written; mobile 375 px no horizontal scroll |
+| Screenshots | `docs/screenshots/` (overview light/dark, companies light, pitch review dark, settings dark, mobile inbox dark) |
+
 ## Not verified (external)
 
 - **Live Gmail/Sheets**: no OAuth client or consent available. Verified only against the local fixture implementing the same API contracts.
@@ -50,6 +64,9 @@ Updated 12 November 2026 by Claude Code on branch `claude/go-redesign`. Every it
 5. First live import with a small limit and no sync; review, then sync.
 
 ## Latest checkpoint
+
+12 Nov 2026 (later): v0.3.0-alpha.2 committed locally on `claude/go-redesign` (not yet pushed or released).
+
 
 12 Nov 2026: branch pushed; prerelease **v0.3.0-alpha.1** published at https://github.com/itsmepava/nventures-sourcing/releases/tag/v0.3.0-alpha.1 (tag → `8847458`; 4 platform binaries, source archive, DEPENDENCIES.txt, SHA256SUMS; downloaded assets re-verified against SHA256SUMS). v0.2.0-alpha.1 is unchanged.
 

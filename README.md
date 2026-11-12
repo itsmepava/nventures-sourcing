@@ -1,6 +1,6 @@
 # nVentures Sourcing
 
-## v0.3.0-alpha.1 — Go app (current development)
+## v0.3.0-alpha.2 — Go app (current development)
 
 One executable with the redesigned interface embedded, SQLite storage, the inbound Gmail pitch funnel, outbound sourcing against the mandate, and verified Google Sheets sync. No Python, Node.js, Docker or paid search/AI accounts are needed.
 
@@ -14,7 +14,8 @@ Windows: `Start nVentures (Go).cmd` next to `nventures.exe`. Demo mode works wit
 - Guide and Google setup: [docs/GO-APP.md](docs/GO-APP.md)
 - Migration from the Python app and rollback: [docs/MIGRATION-GO.md](docs/MIGRATION-GO.md)
 - Five-minute presenter script: [docs/PRESENTER-SCRIPT.md](docs/PRESENTER-SCRIPT.md)
-- Release notes and known limits: [docs/RELEASE-NOTES-0.3.0-alpha.1.md](docs/RELEASE-NOTES-0.3.0-alpha.1.md)
+- Release notes and known limits: [alpha.2](docs/RELEASE-NOTES-0.3.0-alpha.2.md) · [alpha.1](docs/RELEASE-NOTES-0.3.0-alpha.1.md)
+- Screenshots (light and dark): [docs/screenshots/](docs/screenshots/)
 - Future Google Cloud hosting (not deployed): [docs/deploy/GOOGLE-CLOUD.md](docs/deploy/GOOGLE-CLOUD.md)
 - Implementation progress: [docs/handoff/PROGRESS.md](docs/handoff/PROGRESS.md)
 

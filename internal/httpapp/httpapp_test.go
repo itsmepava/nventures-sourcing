@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -173,5 +174,82 @@ func TestDeterministicRehearsal(t *testing.T) {
 	}
 	if !rep.Passed {
 		t.Fatalf("rehearsal failures: %v", rep.Failures)
+	}
+}
+
+func TestRelatedRecordsAndRetry(t *testing.T) {
+	a, srv := newTestApp(t, nil)
+	c := srv.Client()
+	ok := map[string]string{"X-NV-Request": "1", "Content-Type": "application/json"}
+	start := func(path, body string) map[string]any {
+		var j map[string]any
+		r := do(t, c, "POST", srv.URL+path, ok, body)
+		json.NewDecoder(r.Body).Decode(&j)
+		a.Jobs.Wait()
+		return j
+	}
+	start("/api/inbox/import", `{"limit":100,"sync":true}`)
+	start("/api/sourcing/run", `{"target":10,"max_partners":10,"sync":true}`)
+	var rel struct {
+		Companies  []map[string]any `json:"companies"`
+		Candidates []map[string]any `json:"candidates"`
+		Events     []map[string]any `json:"events"`
+	}
+	r := do(t, c, "GET", srv.URL+"/api/related?name=LedgerLeaf%20(demo)&website=https://ledgerleaf.nventures-demo.test/", nil, "")
+	json.NewDecoder(r.Body).Decode(&rel)
+	if len(rel.Companies) != 1 || len(rel.Candidates) < 2 || len(rel.Events) == 0 {
+		t.Fatalf("related: %d companies, %d candidates, %d events", len(rel.Companies), len(rel.Candidates), len(rel.Events))
+	}
+	// A pitch and a sourced company with the same identity are linked.
+	var both struct {
+		Companies []map[string]any `json:"companies"`
+		Pitches   []map[string]any `json:"pitches"`
+	}
+	r = do(t, c, "GET", srv.URL+"/api/related?name=GridLoom%20(demo)&website=https://gridloom.nventures-demo.test", nil, "")
+	json.NewDecoder(r.Body).Decode(&both)
+	if len(both.Companies) != 1 || len(both.Pitches) != 1 {
+		t.Errorf("cross-module identity: %d companies, %d pitches", len(both.Companies), len(both.Pitches))
+	}
+	// A partial run can be retried with the same parameters.
+	js, _ := a.Store.Jobs(t.Context(), "outbound_run", 1)
+	if js[0].Status != "partial" {
+		t.Fatalf("status %s", js[0].Status)
+	}
+	var j map[string]any
+	r = do(t, c, "POST", srv.URL+"/api/jobs/"+strconv.FormatInt(js[0].ID, 10)+"/retry", ok, "")
+	json.NewDecoder(r.Body).Decode(&j)
+	a.Jobs.Wait()
+	if r.StatusCode != 202 || j["kind"] != "outbound_run" {
+		t.Fatalf("retry: %d %v", r.StatusCode, j)
+	}
+	retried, _ := a.Store.Job(t.Context(), int64(j["id"].(float64)))
+	if retried.Params["retry_of"].(float64) != float64(js[0].ID) || retried.Params["target"].(float64) != 10 {
+		t.Errorf("params %v", retried.Params)
+	}
+	// Completed jobs are not retried.
+	ins, _ := a.Store.Jobs(t.Context(), "inbound_import", 1)
+	if r := do(t, c, "POST", srv.URL+"/api/jobs/"+strconv.FormatInt(ins[0].ID, 10)+"/retry", ok, ""); r.StatusCode != 400 {
+		t.Errorf("completed job retried: %d", r.StatusCode)
+	}
+	if r := do(t, c, "GET", srv.URL+"/demo-sheet/demo-outbound-sheet?tab=Active+Sourcing", nil, ""); r.StatusCode != 200 {
+		t.Errorf("demo sheet viewer %d", r.StatusCode)
+	}
+}
+
+func TestConnectionTestPassesAndWritesNothing(t *testing.T) {
+	a, srv := newTestApp(t, nil)
+	r := do(t, srv.Client(), "POST", srv.URL+"/api/google/test", map[string]string{"X-NV-Request": "1"}, "")
+	var checks []map[string]string
+	json.NewDecoder(r.Body).Decode(&checks)
+	if len(checks) != 3 {
+		t.Fatalf("%v", checks)
+	}
+	for _, c := range checks {
+		if c["Status"] != "ok" {
+			t.Errorf("%s: %s %s", c["Name"], c["Status"], c["Message"])
+		}
+	}
+	if a.Fixture.Appends.Load() != 0 {
+		t.Error("connection test wrote rows")
 	}
 }

@@ -138,6 +138,42 @@ func (s *Sheets) Tabs(ctx context.Context, id string) ([]string, error) {
 	return tabs, nil
 }
 
+// SheetGIDs maps tab titles to their numeric sheet IDs (used for row links).
+func (s *Sheets) SheetGIDs(ctx context.Context, id string) (map[string]int64, error) {
+	var out struct {
+		Sheets []struct {
+			Properties struct {
+				SheetID int64  `json:"sheetId"`
+				Title   string `json:"title"`
+			} `json:"properties"`
+		} `json:"sheets"`
+	}
+	if err := s.do(ctx, http.MethodGet, url.PathEscape(id)+"?fields=sheets.properties(sheetId,title)", nil, &out, s.read()); err != nil {
+		return nil, err
+	}
+	m := map[string]int64{}
+	for _, x := range out.Sheets {
+		m[x.Properties.Title] = x.Properties.SheetID
+	}
+	return m, nil
+}
+
+// RowURL links to a sheet row: Google Sheets in live mode, the local
+// fixture viewer in demo mode.
+func RowURL(mode, id, tab string, gid int64, hasGID bool, row int64) string {
+	if row <= 0 || id == "" {
+		return ""
+	}
+	if mode == "demo" {
+		return fmt.Sprintf("/demo-sheet/%s?tab=%s#row-%d", url.PathEscape(id), url.QueryEscape(tab), row)
+	}
+	u := "https://docs.google.com/spreadsheets/d/" + url.PathEscape(id) + "/edit"
+	if hasGID {
+		u += fmt.Sprintf("#gid=%d&range=A%d", gid, row)
+	}
+	return u
+}
+
 // Append adds one row with RAW input exactly once and returns updatedRange.
 // It is never retried automatically: a failure may still have written.
 func (s *Sheets) Append(ctx context.Context, id, tab string, row []string) (string, error) {

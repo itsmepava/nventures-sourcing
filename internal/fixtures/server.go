@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"net/http"
 	"net/url"
@@ -341,7 +342,7 @@ func (s *Server) sheets(w http.ResponseWriter, r *http.Request) {
 	if after == "" {
 		var sheets []map[string]any
 		for name := range book {
-			sheets = append(sheets, map[string]any{"properties": map[string]any{"title": name}})
+			sheets = append(sheets, map[string]any{"properties": map[string]any{"title": name, "sheetId": int64(crc32.ChecksumIEEE([]byte(name)) % 1000000000)}})
 		}
 		writeJSON(w, 200, map[string]any{"spreadsheetId": id, "sheets": sheets})
 		return

@@ -4,7 +4,7 @@
 # source archive (it is produced from HEAD with git archive).
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-VERSION="${VERSION:-0.3.0-alpha.1}"
+VERSION="${VERSION:-0.3.0-alpha.2}"
 GO=go
 [ -x ./.tools/go/bin/go ] && GO=./.tools/go/bin/go
 OUT="release/v$VERSION"
@@ -32,6 +32,6 @@ git archive --format=tar.gz --prefix="nventures-sourcing-$VERSION/" -o "$OUT/nve
   echo
   "$GO" list -m all | sed 's/^/- /'
 } > "$OUT/DEPENDENCIES.txt"
-cp docs/RELEASE-NOTES-0.3.0-alpha.1.md "$OUT/RELEASE-NOTES.md"
+cp "docs/RELEASE-NOTES-$VERSION.md" "$OUT/RELEASE-NOTES.md"
 (cd "$OUT" && sha256sum nventures-* DEPENDENCIES.txt RELEASE-NOTES.md > SHA256SUMS)
 echo "Artifacts in $OUT"

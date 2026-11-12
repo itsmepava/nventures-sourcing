@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -132,6 +133,11 @@ func TestInboundImportSyncAndRepeat(t *testing.T) {
 	for _, r := range rows {
 		if r[0] == "=Sum Labs (demo) — කෘෂි" && !strings.Contains(r[1], "\n") {
 			t.Error("newline lost in RAW write")
+		}
+	}
+	for _, n := range []string{"Kelp Ledger (demo)", "Orbit Pantry (demo)"} {
+		if u := ps[n].SheetURL; !strings.HasPrefix(u, "/demo-sheet/"+fixtures.InboundSheetID+"?tab=Pitches#row-") {
+			t.Errorf("%s row link %q", n, u)
 		}
 	}
 	if ps["Kelp Ledger (demo)"].Status == "duplicate" {
@@ -302,6 +308,12 @@ func TestOutboundRunSyncRotationAndRepeat(t *testing.T) {
 	rows := h.fx.Rows(fixtures.OutboundSheetID, "Active Sourcing")
 	if len(rows) != 1+fixtures.EligibleCount || len(rows[1]) != 38 {
 		t.Fatalf("rows %d width %d", len(rows), len(rows[1]))
+	}
+	comps, _ := h.st.AllCompanies(context.Background(), "")
+	for _, c := range comps {
+		if c.SheetRow == nil || c.SheetURL != fmt.Sprintf("/demo-sheet/%s?tab=Active+Sourcing#row-%d", fixtures.OutboundSheetID, *c.SheetRow) || rows[*c.SheetRow-1][0] != c.Name {
+			t.Errorf("%s: link %q does not point at its row", c.Name, c.SheetURL)
+		}
 	}
 	for _, r := range rows[1:] {
 		if r[25] != "Sourced" || r[28] == "" || r[30] == "" || r[31] != "" {

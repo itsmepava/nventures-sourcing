@@ -118,5 +118,9 @@ func Mailbox() []Mail {
 		// Unicode and formula-looking text must survive sheet round-trips untouched.
 		{ID: "demo-m15", Thread: "demo-t-15", From: formSender, Subject: "New pitch submission", Minutes: 15,
 			Plain: "Company name: =Sum Labs (demo) — කෘෂි\nOne line on what you do: Crop-yield forecasting for co-operatives in Sri Lanka;\nmulti-line description with Unicode ✓ and +plus prefix.\nContact email: team@sumlabs.nventures-demo.test\n"},
+		// A portfolio company that outbound sourcing also finds: the same
+		// company identity links the pitch and the sourced company.
+		{ID: "demo-m16", Thread: "demo-t-16", From: formSender, Subject: "New pitch submission", Minutes: 16,
+			Plain: form("GridLoom (demo)", "Aishath Ali", "https://gridloom.nventures-demo.test", "Angel", "Energy", "Maldives", "Energy dashboards for resorts and hospitality businesses in the Maldives.", "", "founders@gridloom.nventures-demo.test")},
 	}
 }

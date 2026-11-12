@@ -21,7 +21,7 @@ func TestFixtureMailboxClassification(t *testing.T) {
 	want := map[string]string{
 		"demo-m01": "ready", "demo-m02": "ready", "demo-m03": "ready", "demo-m04": "review", "demo-m05": "ready",
 		"demo-m06": "review", "demo-m07": "review", "demo-m08": "review", "demo-m09": "ready", "demo-m10": "skipped",
-		"demo-m11": "skipped", "demo-m12": "review", "demo-m13": "ready", "demo-m14": "ready", "demo-m15": "ready",
+		"demo-m11": "skipped", "demo-m12": "review", "demo-m13": "ready", "demo-m14": "ready", "demo-m15": "ready", "demo-m16": "ready",
 	}
 	for id, status := range want {
 		if p[id].Status != status {

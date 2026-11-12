@@ -351,6 +351,9 @@ func (r *run) syncCompany(c store.Company, sheet *outboundSheet) {
 	switch res.Status {
 	case "verified", "already_exists":
 		r.inc(res.Status, 1)
+		if res.Row > 0 {
+			_ = r.env.Store.SetSheetURL(r.ctx, "companies", c.ID, r.rowLink(sheet.conn, r.cfg.OutboundSheet, r.cfg.OutboundTab, res.Row))
+		}
 		if res.Status == "verified" && res.Row > int64(len(sheet.snapshot)) {
 			for int64(len(sheet.snapshot)) < res.Row-1 {
 				sheet.snapshot = append(sheet.snapshot, []string{})

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,6 +24,8 @@ import (
 	"github.com/itsmepava/nventures-sourcing/internal/netx"
 	"github.com/itsmepava/nventures-sourcing/internal/store"
 )
+
+var demoSheetTmpl = template.Must(template.New("sheet").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }}).Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Demo sheet · {{.Tab}}</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"></head><body><main class="sheet-view"><p class="banner info">Demo fixture sheet <code>{{.ID}}</code> — tab “{{.Tab}}”. In live mode this link opens the row in Google Sheets.</p><div class="table-wrap panel"><table class="sheet-table"><tbody>{{range $i, $r := .Rows}}<tr id="row-{{add $i 1}}"><th scope="row">{{add $i 1}}</th>{{range $r}}<td><div class="cell">{{.}}</div></td>{{end}}</tr>{{end}}</tbody></table></div></main></body></html>`))
 
 func (a *App) state(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -534,6 +537,63 @@ func (a *App) cancelJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, j)
 }
 
+// retryJob starts a new job of the same kind with the same parameters.
+func (a *App) retryJob(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	j, err := a.Store.Job(r.Context(), id)
+	if !ok || err != nil {
+		writeErr(w, 404, "Job not found")
+		return
+	}
+	switch j.Status {
+	case "failed", "cancelled", "interrupted", "partial", "completed_with_errors":
+	default:
+		writeErr(w, 400, "Only failed, cancelled, interrupted, partial or error-containing jobs can be retried")
+		return
+	}
+	if _, legacy := j.Params["legacy"]; legacy {
+		writeErr(w, 400, "Jobs imported from the Python app cannot be retried; start a new one")
+		return
+	}
+	params := map[string]any{}
+	for k, v := range j.Params {
+		params[k] = v
+	}
+	params["retry_of"] = j.ID
+	body, _ := json.Marshal(params)
+	r2 := r.Clone(r.Context())
+	r2.Body = io.NopCloser(strings.NewReader(string(body)))
+	a.startJob(j.Kind)(w, r2)
+}
+
+// related returns records in other modules for the same company identity.
+func (a *App) related(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	nameKey, dom := domain.NameKey(q.Get("name")), domain.IdentityDomain(q.Get("website"))
+	rel, err := a.Store.RelatedTo(r.Context(), nameKey, dom, int64(qInt(r, "company", 0)), int64(qInt(r, "pitch", 0)))
+	if err != nil {
+		writeErr(w, 500, "Could not load related records")
+		return
+	}
+	writeJSON(w, 200, rel)
+}
+
+// demoSheet renders a fixture sheet tab so demo row links can be checked.
+func (a *App) demoSheet(w http.ResponseWriter, r *http.Request) {
+	if a.Fixture == nil {
+		http.NotFound(w, r)
+		return
+	}
+	tab := r.URL.Query().Get("tab")
+	rows := a.Fixture.Rows(r.PathValue("id"), tab)
+	if rows == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = demoSheetTmpl.Execute(w, map[string]any{"ID": r.PathValue("id"), "Tab": tab, "Rows": rows})
+}
+
 func (a *App) listEvents(w http.ResponseWriter, r *http.Request) {
 	ev, err := a.Store.Events(r.Context(), 0, r.URL.Query().Get("kind"), int64(qInt(r, "after", 0)), min(max(qInt(r, "limit", 200), 1), 1000))
 	if err != nil {
@@ -781,7 +841,7 @@ func (a *App) testConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	if cfg.OutboundSheet == "" {
 		out = append(out, check{"Outbound sheet", "missing", "Set the outbound sheet ID (optional until you sync sourced companies)"})
-	} else if rows, err := conn.Sheets.Values(ctx, cfg.OutboundSheet, google.QuoteTab(cfg.OutboundTab)+"!1:1"); err != nil {
+	} else if rows, err := conn.Sheets.Values(ctx, cfg.OutboundSheet, google.QuoteTab(cfg.OutboundTab)+"!A1:AZ1"); err != nil {
 		out = append(out, check{"Outbound sheet", "error", netx.SafeMessage(err)})
 	} else if err := google.ValidateOutbound(rows); err != nil {
 		out = append(out, check{"Outbound sheet", "error", netx.SafeMessage(err)})

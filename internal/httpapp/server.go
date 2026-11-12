@@ -69,6 +69,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/jobs", a.listJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", a.getJob)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", a.cancelJob)
+	mux.HandleFunc("POST /api/jobs/{id}/retry", a.retryJob)
+	mux.HandleFunc("GET /api/related", a.related)
+	mux.HandleFunc("GET /demo-sheet/{id}", a.demoSheet)
 	mux.HandleFunc("GET /api/events", a.listEvents)
 	mux.HandleFunc("GET /api/sync-ops", a.listSyncOps)
 
@@ -248,7 +251,7 @@ func (a *App) readyz(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>nVentures sign in</title><link rel="stylesheet" href="/static/app.css"></head><body class="login"><main class="login-card"><img src="/static/brand/logo.png" alt="nVentures" width="200"><h1>Sign in</h1><form method="post" action="/login"><label>Access token<input name="token" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign in</button></form></main></body></html>`)
+	fmt.Fprint(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>nVentures sign in</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"></head><body class="login"><main class="login-card"><img class="logo logo-light" src="/static/brand/logo.png" alt="nVentures" width="200"><img class="logo logo-dark" src="/static/brand/logo-dark.png" alt="" aria-hidden="true" width="200"><h1>Sign in</h1><form method="post" action="/login"><label>Access token<input name="token" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign in</button></form></main></body></html>`)
 }
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {

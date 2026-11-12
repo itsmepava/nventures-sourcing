@@ -9,11 +9,25 @@ for (const m of ['replaceChildren', 'append', 'prepend']) {
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
+// act() prevents duplicate submissions: while a handler's promise is pending
+// the button (or form) ignores further clicks and shows a busy state.
+function act(fn) {
+  return async function (e) {
+    const el = e && e.currentTarget;
+    if (el && el.dataset.busy) { e.preventDefault(); return; }
+    let r;
+    try { r = fn.call(this, e); } catch (err) { throw err; }
+    if (!(r instanceof Promise) || !el) return r;
+    el.dataset.busy = '1'; el.setAttribute('aria-busy', 'true'); if (el.tagName === 'BUTTON') el.disabled = true;
+    try { return await r; } finally { delete el.dataset.busy; el.removeAttribute('aria-busy'); if (el.tagName === 'BUTTON' && el.getAttribute('aria-disabled') !== 'true') el.disabled = false; }
+  };
+}
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === undefined || v === null || v === false) continue;
     if (k === 'class') el.className = v;
+    else if ((k === 'onclick' && tag === 'button') || k === 'onsubmit') el.addEventListener(k.slice(2), act(v));
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
     else if (k === 'dataset') Object.assign(el.dataset, v);
     else if (k === 'value') el.value = v;
@@ -33,13 +47,31 @@ async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: { 'X-NV-Request': '1' } };
   if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
   let res;
-  try { res = await fetch(path, init); } catch { throw new Error('The local nVentures server is not reachable. Is it still running?'); }
+  try { res = await fetch(path, init); } catch { setOffline(true); throw new Error('The local nVentures server is not reachable. Is it still running? Start it again with start-go.sh.'); }
+  setOffline(false);
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = null; }
   if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
   return data;
 }
+
+let offline = false;
+function setOffline(on) {
+  if (on === offline) return;
+  offline = on;
+  const el = $('#offline');
+  if (!el) return;
+  el.hidden = !on;
+  if (on) pollOnline();
+}
+async function pollOnline() {
+  while (offline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try { const r = await fetch('/health', { cache: 'no-store' }); if (r.ok) { setOffline(false); toast('Reconnected to the local app'); route(); } } catch {}
+  }
+}
+window.addEventListener('offline', () => setOffline(true));
 
 // ---------- formatting ----------
 const fmtDate = (s) => { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); };
@@ -67,7 +99,9 @@ function applyTheme(pref) {
   const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.dataset.themePref = pref;
-  const b = $('#theme-btn'); if (b) b.setAttribute('aria-label', 'Theme: ' + pref + ' (click to change)');
+  const b = $('#theme-btn');
+  if (b) { b.setAttribute('aria-label', `Theme: ${pref}${pref === 'system' ? ' (' + (dark ? 'dark' : 'light') + ')' : ''}. Click to change.`); const l = $('#theme-label'); if (l) l.textContent = pref[0].toUpperCase() + pref.slice(1); }
+  const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#0d1218' : '#f4f6f8');
 }
 function cycleTheme() {
   const order = ['system', 'light', 'dark'];
@@ -78,7 +112,21 @@ function toggleCompact() {
   const on = !document.documentElement.classList.contains('compact');
   document.documentElement.classList.toggle('compact', on); prefs.set('compact', on ? '1' : '0'); toast(on ? 'Compact density' : 'Comfortable density');
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(prefs.get('theme', 'system')));
+// Follow OS theme changes while "System" is selected. The change event is the
+// primary signal; focus/visibility and a light 2 s check cover browsers or
+// embedded views that do not deliver it.
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+let lastSystemDark = darkMQ.matches;
+function syncSystemTheme() {
+  const now = darkMQ.matches;
+  if (now === lastSystemDark) return;
+  lastSystemDark = now;
+  if (prefs.get('theme', 'system') === 'system') applyTheme('system');
+}
+darkMQ.addEventListener('change', syncSystemTheme);
+window.addEventListener('focus', syncSystemTheme);
+document.addEventListener('visibilitychange', syncSystemTheme);
+setInterval(syncSystemTheme, 2000);
 
 // ---------- toasts ----------
 function toast(msg, kind = '') {
@@ -89,7 +137,7 @@ function toast(msg, kind = '') {
 // ---------- overlays with focus management ----------
 const overlays = [];
 function focusables(el) { return $$('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])', el).filter((x) => x.offsetParent !== null || x === document.activeElement); }
-function openOverlay({ kind = 'drawer', title, sub, body, foot, label, onClose, className = '' }) {
+function openOverlay({ kind = 'drawer', title, sub, body, foot, label, onClose, className = '', isDirty }) {
   const prev = document.activeElement;
   const id = 'ov-' + Math.random().toString(36).slice(2);
   const panel = h('div', { class: (kind === 'drawer' ? 'drawer' : 'dialog') + ' ' + className, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': title ? id : null, 'aria-label': title ? null : label, tabindex: '-1' },
@@ -97,11 +145,15 @@ function openOverlay({ kind = 'drawer', title, sub, body, foot, label, onClose, 
     body, foot ? h('div', { class: 'drawer-foot' }, foot) : null);
   const ov = h('div', { class: 'overlay ' + (kind === 'drawer' ? '' : 'dialog-wrap') }, panel);
   ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });
-  const rec = { ov, panel, close, prev };
-  function close() {
-    const i = overlays.indexOf(rec); if (i < 0) return;
+  const rec = { ov, panel, close, prev, isDirty };
+  async function close(force) {
+    const i = overlays.indexOf(rec); if (i < 0) return true;
+    if (force !== true && isDirty && isDirty()) {
+      if (!(await confirmDialog('Discard unsaved changes?', 'You edited this record but did not save it. Your changes will be lost.', 'Discard changes'))) return false;
+    }
     overlays.splice(i, 1); ov.remove(); onClose && onClose();
     if (prev && document.contains(prev)) prev.focus();
+    return true;
   }
   overlays.push(rec);
   (kind === 'drawer' ? $('#drawer-root') : $('#dialog-root')).append(ov);
@@ -119,6 +171,8 @@ document.addEventListener('keydown', (e) => {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 });
+const anyDirty = () => overlays.some((o) => o.isDirty && o.isDirty());
+window.addEventListener('beforeunload', (e) => { if (anyDirty()) { e.preventDefault(); e.returnValue = ''; } });
 function confirmDialog(title, text, okLabel = 'Confirm') {
   return new Promise((resolve) => {
     let done = false;
@@ -131,6 +185,12 @@ function confirmDialog(title, text, okLabel = 'Confirm') {
 const app = { state: null, page: null, watchers: new Map() };
 async function loadState() {
   app.state = await api('/api/state');
+  // If browser storage was cleared, fall back to the preference saved on the server.
+  const sp = app.state.preferences || {};
+  try {
+    if (!localStorage.getItem('nv.theme') && sp['pref.theme']) { localStorage.setItem('nv.theme', sp['pref.theme']); applyTheme(sp['pref.theme']); }
+    if (!localStorage.getItem('nv.compact') && sp['pref.compact']) { localStorage.setItem('nv.compact', sp['pref.compact']); document.documentElement.classList.toggle('compact', sp['pref.compact'] === '1'); }
+  } catch {}
   const r = app.state.readiness;
   const mb = $('#mode-badge'); mb.textContent = r.mode === 'demo' ? 'Demo data' : 'Live'; mb.classList.toggle('live', r.mode === 'live');
   const pc = app.state.pitch_counts || {};
@@ -155,17 +215,29 @@ async function route() {
   $$('.sidebar nav a').forEach((a) => a.toggleAttribute('aria-current', false));
   const nav = $(`.sidebar nav a[data-nav="${name || 'dashboard'}"]`); if (nav) nav.setAttribute('aria-current', 'page');
   $('#sidebar').classList.remove('open'); $('#menu-btn').setAttribute('aria-expanded', 'false');
-  while (overlays.length) overlays[overlays.length - 1].close();
+  while (overlays.length) await overlays[overlays.length - 1].close(true);
   app.jobsMount = null; app.reloadPage = null; app.keys = null;
   for (const w of app.watchers.values()) w.detach();
   const main = $('#main');
   main.replaceChildren(h('div', { class: 'loading-page', role: 'status' }, 'Loading…'));
   try { await loadState(); app.page = name; await render(main, params); }
-  catch (e) { main.replaceChildren(h('div', { class: 'note bad', role: 'alert' }, e.message)); }
+  catch (e) { main.replaceChildren(h('div', { class: 'note bad error-state', role: 'alert' }, h('p', {}, e.message), h('button', { class: 'btn', onclick: () => route() }, icon('sync'), 'Try again'))); }
   if (app.focusMain) { main.focus({ preventScroll: true }); }
   app.focusMain = true;
 }
-window.addEventListener('hashchange', route);
+let lastHash = location.hash, revertingHash = false;
+window.addEventListener('hashchange', async () => {
+  if (revertingHash) { revertingHash = false; return; }
+  if (anyDirty()) {
+    const target = location.hash;
+    revertingHash = true; location.hash = lastHash;
+    const top = overlays.filter((o) => o.isDirty && o.isDirty()).pop();
+    if (!(await top.close())) return;
+    location.hash = target; return;
+  }
+  lastHash = location.hash;
+  route();
+});
 
 // ---------- job progress ----------
 class JobWatcher {
@@ -186,12 +258,21 @@ class JobWatcher {
     const running = j.status === 'running';
     this.el.replaceChildren(
       h('div', { class: 'job-head' }, h('b', {}, `${JOB_LABEL[j.kind] || j.kind} #${j.id}`), badge(j.status), h('span', { class: 'msg' }, j.message || ''),
-        running ? h('button', { class: 'btn sm', onclick: async () => { await api(`/api/jobs/${j.id}/cancel`, { method: 'POST' }); toast('Cancellation requested'); } }, 'Cancel') : h('a', { class: 'btn sm ghost', href: `#/activity?job=${j.id}` }, 'Details')),
+        running ? h('button', { class: 'btn sm', onclick: async () => { await api(`/api/jobs/${j.id}/cancel`, { method: 'POST' }); toast('Cancellation requested'); } }, 'Cancel') : null,
+        !running && RETRYABLE.has(j.status) ? retryButton(j, this.mount, this.onDone) : null,
+        !running ? h('a', { class: 'btn sm ghost', href: `#/activity?job=${j.id}` }, 'Details') : null),
       h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': j.progress, 'aria-label': 'Progress' }, h('div', { style: `width:${j.progress}%` })),
       h('div', { class: 'counters' }, keys.filter((k) => c[k]).map((k) => h('span', {}, k.replace(/_/g, ' ') + ': ', h('b', {}, c[k])))),
       c.more_available ? h('p', { class: 'hint' }, 'More matching messages remain — run the import again to continue.') : null,
       this.events.length ? h('details', { open: running }, h('summary', {}, `Events (${this.events.length})`), eventList(this.events.slice(-80).reverse())) : null);
   }
+}
+const RETRYABLE = new Set(['failed', 'cancelled', 'interrupted', 'partial', 'completed_with_errors']);
+function retryButton(j, mount, onDone) {
+  if (j.params && j.params.legacy) return null;
+  return h('button', { class: 'btn sm', title: 'Start the same job again with the same settings', onclick: async () => {
+    try { const n = await api(`/api/jobs/${j.id}/retry`, { method: 'POST' }); toast('Started again as job #' + n.id); if (mount) new JobWatcher(n.id, mount, onDone); } catch (e) { toast(e.message, 'bad'); }
+  } }, icon('sync'), 'Retry');
 }
 function eventList(events) {
   return h('ul', { class: 'events' }, events.map((e) => h('li', {}, h('time', { datetime: e.created_at, title: fmtDate(e.created_at) }, fmtTime(e.created_at)), h('span', { class: 'kind' }, e.kind.replace(/_/g, ' ')), h('p', {}, e.message))));
@@ -212,7 +293,14 @@ function dataTable({ key, columns, fetchPage, onOpen, selectable, tabs, extraFil
   const tabBar = tabs ? h('div', { class: 'tabs', role: 'group', 'aria-label': 'Filter by status' }) : null;
   const starBtn = h('button', { class: 'btn sm', 'aria-pressed': String(st.starred), onclick: () => { st.starred = !st.starred; starBtn.setAttribute('aria-pressed', String(st.starred)); st.page = 1; save(); load(); } }, icon('star'), 'Shortlist');
   const filterEls = (extraFilters || []).map((f) => { const s = h('select', { 'aria-label': f.label, onchange: () => { st.filters[f.key] = s.value; st.page = 1; save(); load(); } }, h('option', { value: '' }, f.label + ': all'), f.options.map((o) => h('option', { value: o }, o))); s.value = st.filters[f.key] || ''; return s; });
-  const toolbar = h('div', { class: 'toolbar' }, h('label', { class: 'search' }, icon('search'), search), tabBar, filterEls, starBtn);
+  const defaultStatus = tabs ? tabs[0][0] : '';
+  const active = () => !!(st.q || st.starred || Object.values(st.filters).some(Boolean) || st.status !== defaultStatus);
+  const clearBtn = h('button', { class: 'btn sm ghost', onclick: () => clearAll() }, icon('close'), 'Clear filters');
+  function clearAll() {
+    st.q = ''; search.value = ''; st.starred = false; starBtn.setAttribute('aria-pressed', 'false'); st.filters = {}; filterEls.forEach((el) => { el.value = ''; }); st.status = defaultStatus; st.page = 1; st.sort = ''; st.desc = false; save(); load();
+  }
+  search.setAttribute('aria-label', 'Search ' + key);
+  const toolbar = h('div', { class: 'toolbar' }, h('label', { class: 'search' }, icon('search'), search), tabBar, filterEls, starBtn, clearBtn);
   const selBar = h('div', { class: 'selection-bar', hidden: true });
   const tableWrap = h('div', { class: 'table-wrap' });
   const pager = h('div', { class: 'pager' });
@@ -224,9 +312,11 @@ function dataTable({ key, columns, fetchPage, onOpen, selectable, tabs, extraFil
   }
   async function load() {
     renderTabs(api.lastCounts);
+    clearBtn.hidden = !active();
     tableWrap.setAttribute('aria-busy', 'true');
+    if (!tableWrap.firstChild) tableWrap.append(h('div', { class: 'loading', role: 'status' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Loading…'));
     let res;
-    try { res = await fetchPage(st); } catch (e) { tableWrap.replaceChildren(h('div', { class: 'note bad', role: 'alert' }, e.message)); return; }
+    try { res = await fetchPage(st); } catch (e) { tableWrap.replaceChildren(h('div', { class: 'note bad error-state', role: 'alert' }, h('p', {}, e.message), h('button', { class: 'btn sm', onclick: () => load() }, icon('sync'), 'Retry'))); return; }
     finally { tableWrap.removeAttribute('aria-busy'); }
     st.items = res.items; st.cursor = Math.min(st.cursor, res.items.length - 1);
     renderTabs(res.counts);
@@ -238,7 +328,9 @@ function dataTable({ key, columns, fetchPage, onOpen, selectable, tabs, extraFil
         columns.map((c) => h('td', { class: c.cls }, c.render(item, load))));
       tr.dataset.idx = idx; return tr;
     });
-    tableWrap.replaceChildren(res.items.length ? h('table', {}, h('thead', {}, head), h('tbody', {}, rows)) : h('div', { class: 'empty' }, h('b', {}, st.q || st.starred ? 'No matches' : 'Nothing here yet'), emptyText || ''));
+    tableWrap.replaceChildren(res.items.length ? h('table', {}, h('caption', { class: 'sr-only' }, `${key}: ${res.total} results`), h('thead', {}, head), h('tbody', {}, rows))
+      : active() ? h('div', { class: 'empty' }, h('b', {}, 'No matches'), h('p', {}, 'Nothing matches the current search and filters.'), h('button', { class: 'btn sm', onclick: () => clearAll() }, 'Clear filters'))
+      : h('div', { class: 'empty' }, h('b', {}, 'Nothing here yet'), emptyText || ''));
     const pages = Math.max(1, Math.ceil(res.total / st.per));
     const perSel = h('select', { 'aria-label': 'Rows per page', onchange: () => { st.per = Number(perSel.value); prefs.set('per_page', st.per); st.page = 1; load(); } }, [10, 25, 50, 100].map((n) => h('option', { value: n }, n + ' / page'))); perSel.value = st.per;
     pager.replaceChildren(h('span', {}, `${res.total} total · page ${st.page} of ${pages}`), h('div', { class: 'actions' }, perSel,
@@ -258,7 +350,7 @@ function dataTable({ key, columns, fetchPage, onOpen, selectable, tabs, extraFil
     if (e.key === 'x' && selectable && st.cursor >= 0) { const id = st.items[st.cursor].id; st.selected.has(id) ? st.selected.delete(id) : st.selected.add(id); load(); return true; }
     return false;
   };
-  root.reload = load; root.state = st;
+  root.reload = load; root.state = st; root.exportQuery = () => qs({ ...st, status: st.filters.status ?? st.status });
   load();
   return root;
 }
@@ -274,6 +366,35 @@ function qs(st, extra = {}) {
   return p.toString();
 }
 const disabledReason = (btn, reason) => { if (reason) { btn.setAttribute('aria-disabled', 'true'); btn.title = reason; btn.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); toast(reason, 'bad'); }, true); } return btn; };
+
+function fieldError(el, msg) {
+  const id = el.id || (el.id = 'f-' + Math.random().toString(36).slice(2));
+  el.setAttribute('aria-invalid', 'true');
+  const m = h('span', { class: 'field-error', id: id + '-err', role: 'alert' }, msg);
+  el.setAttribute('aria-describedby', m.id);
+  el.insertAdjacentElement('afterend', m);
+}
+function clearErrors(fields) {
+  for (const el of Object.values(fields)) { el.removeAttribute('aria-invalid'); el.removeAttribute('aria-describedby'); const n = el.nextElementSibling; if (n && n.classList.contains('field-error')) n.remove(); }
+}
+function rowLink(url, row) {
+  if (!url) return null;
+  return h('p', {}, h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, icon('ext'), ` Open sheet row ${row || ''}`.trimEnd()));
+}
+function relatedSection({ name, website, company, pitch }) {
+  const box = h('div', { class: 'section related', 'aria-live': 'polite' }, h('h3', {}, 'Across nVentures'), h('p', { class: 'hint' }, 'Loading related records…'));
+  const q = new URLSearchParams({ name: name || '', website: website || '', company: company || 0, pitch: pitch || 0 });
+  api('/api/related?' + q).then((rel) => {
+    const items = [];
+    for (const c of rel.companies) items.push(h('li', {}, h('span', { class: 'badge info' }, 'Sourced company'), h('a', { href: '#/companies?company=' + c.id }, c.name), ' · ', badge(c.sync_status)));
+    for (const p of rel.pitches) items.push(h('li', {}, h('span', { class: 'badge' }, 'Pitch'), h('a', { href: '#/inbox?pitch=' + p.id }, p.name), ' · ', badge(p.status), ' · ', fmtDate(p.received_at)));
+    for (const c of rel.candidates) items.push(h('li', {}, h('span', { class: 'badge' }, 'Research'), `${c.partner}: `, badge(c.outcome), ' · ', fmtDate(c.created_at)));
+    box.replaceChildren(h('h3', {}, 'Across nVentures'),
+      items.length ? h('ul', { class: 'source-list' }, items) : h('p', { class: 'hint' }, 'No other records share this company name or website.'),
+      rel.events.length ? h('details', {}, h('summary', {}, `Activity (${rel.events.length})`), eventList(rel.events)) : null);
+  }).catch((e) => box.replaceChildren(h('h3', {}, 'Across nVentures'), h('p', { class: 'note bad' }, e.message)));
+  return box;
+}
 
 // ---------- dashboard ----------
 async function renderDashboard(main) {
@@ -341,7 +462,7 @@ async function renderInbox(main, params) {
   });
   main.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Inbound pitch funnel'), h('p', {}, 'A broad funnel: any startup can enter. Unclear or established businesses go to review; nothing is written to the sheet until it is approved. Status and manual cells in the sheet are never changed.')),
-      h('div', { class: 'actions' }, importBtn, syncReady, h('a', { class: 'btn ghost', href: '/api/pitches/export.csv', download: '' }, icon('download'), 'CSV'))),
+      h('div', { class: 'actions' }, importBtn, syncReady, (() => { const a = h('a', { class: 'btn ghost', href: '/api/pitches/export.csv', download: '', title: 'Exports the pitches matching the current search and filters' }, icon('download'), 'CSV'); a.addEventListener('click', () => { a.href = '/api/pitches/export.csv?' + qs(table.state); }); return a; })())),
     jobsMount, table);
   app.keys = table.keys; app.jobsMount = jobsMount; app.reloadPage = () => table.reload();
   const running = app.state.running.inbound; if (running) new JobWatcher(running, jobsMount, () => { table.reload(); loadState(); });
@@ -374,10 +495,25 @@ async function openPitch(id, after) {
     contact: h('input', { type: 'email', value: d.contact || '', maxlength: 500, disabled: locked }),
     notes: h('textarea', { rows: 5, maxlength: 12000, disabled: locked }, d.notes || ''),
   };
+  const initial = JSON.stringify(Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])));
+  const dirty = () => !locked && JSON.stringify(Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]))) !== initial;
+  const validate = (decision) => {
+    clearErrors(f);
+    let ok = true;
+    const err = (el, msg) => { fieldError(el, msg); if (ok) el.focus(); ok = false; };
+    if (!f.name.value.trim()) err(f.name, 'Company name is required.');
+    if (f.website.value.trim() && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(f.website.value.trim())) err(f.website, 'Use a full web address starting with https://');
+    if (decision === 'ready') {
+      if (f.description.value.trim().length < 10) err(f.description, 'Describe what the company does (at least 10 characters) before approving.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contact.value.trim())) err(f.contact, 'A valid contact email is required before approving.');
+    } else if (f.contact.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contact.value.trim())) err(f.contact, 'This does not look like an email address.');
+    return ok;
+  };
   const save = async (decision) => {
+    if (!validate(decision)) { toast('Please fix the highlighted fields', 'bad'); return false; }
     try {
       await api('/api/pitches/' + id, { method: 'POST', body: { name: f.name.value, website: f.website.value, description: f.description.value, hq: f.hq.value, contact: f.contact.value, notes: f.notes.value, decision } });
-      toast(decision === 'ready' ? 'Approved — ready to sync' : decision === 'skipped' ? 'Skipped' : 'Saved for review'); dr.close(); after && after();
+      toast(decision === 'ready' ? 'Approved — ready to sync' : decision === 'skipped' ? 'Skipped' : 'Saved for review'); dr.close(true); after && after();
       return true;
     } catch (e) { toast(e.message, 'bad'); return false; }
   };
@@ -393,8 +529,8 @@ async function openPitch(id, after) {
   } }, 'Suggest with local model') : null;
   const body = h('div', { class: 'drawer-body' },
     (d.reasons || []).length || p.error ? h('div', { class: 'note ' + (p.status === 'error' || p.status === 'conflict' || p.status === 'uncertain' ? 'bad' : 'warn') }, p.error ? h('p', {}, p.error) : null, (d.reasons || []).length ? h('ul', { class: 'reasons' }, d.reasons.map((x) => h('li', {}, x))) : null) : null,
-    locked ? h('p', { class: 'note ok' }, `In the inbound sheet${d.sheet_row ? ' at row ' + d.sheet_row : ''}. Edit the sheet directly — nVentures never overwrites sheet rows.`) : null,
-    h('form', { class: 'form', onsubmit: (e) => { e.preventDefault(); save('ready'); } },
+    locked ? h('div', { class: 'note ok' }, h('p', {}, `Read-only: this pitch is in the inbound sheet${d.sheet_row ? ' at row ' + d.sheet_row : ''}. Edit the sheet directly — nVentures never overwrites sheet rows.`), rowLink(p.sheet_url, d.sheet_row)) : null,
+    h('form', { class: 'form', novalidate: true, onsubmit: (e) => { e.preventDefault(); return save('ready'); } },
       h('div', { class: 'field-row' }, h('label', {}, 'Company name', f.name), h('label', {}, 'Website', f.website)),
       h('label', {}, 'Description', f.description),
       h('div', { class: 'field-row' }, h('label', {}, 'HQ (only if stated)', f.hq, h('span', { class: 'hint' }, 'Country of incorporation is not HQ.')), h('label', {}, 'Contact email', f.contact, d.contact_source ? h('span', { class: 'hint' }, 'Taken from ' + d.contact_source) : null)),
@@ -411,11 +547,12 @@ async function openPitch(id, after) {
       (d.deck_links || []).map((u) => h('li', {}, h('span', { class: 'badge warn' }, 'unreviewed'), h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, u))),
       (d.attachments || []).map((a) => h('li', {}, h('span', { class: 'badge warn' }, 'unreviewed'), `${a.filename} (${a.mime_type}, ${Math.round((a.size || 0) / 1024)} KB) — open the original email to view`)))) : null,
     d.excerpt ? h('details', { class: 'section' }, h('summary', {}, 'Email text (quoted replies removed)'), h('pre', { class: 'excerpt' }, d.excerpt)) : null,
-    (data.sync_ops || []).length ? h('details', { class: 'section' }, h('summary', {}, `Sheet write history (${data.sync_ops.length})`), h('ul', { class: 'source-list' }, data.sync_ops.map((o) => h('li', {}, badge(o.status), `${fmtDate(o.updated_at)} ${o.sheet_row ? '· row ' + o.sheet_row : ''} ${o.error || ''}`)))) : null);
+    (data.sync_ops || []).length ? h('details', { class: 'section' }, h('summary', {}, `Sheet write history (${data.sync_ops.length})`), h('ul', { class: 'source-list' }, data.sync_ops.map((o) => h('li', {}, badge(o.status), `${fmtDate(o.updated_at)} ${o.sheet_row ? '· row ' + o.sheet_row : ''} ${o.error || ''}`)))) : null,
+    relatedSection({ name: d.name || p.name, website: d.website, pitch: p.id }));
   const foot = locked ? [h('button', { class: 'btn', onclick: () => dr.close() }, 'Close')] : [
     h('button', { class: 'btn ghost', onclick: () => save('skipped') }, 'Skip'), h('button', { class: 'btn', onclick: () => save('review') }, 'Save, keep in review'),
     h('button', { class: 'btn', onclick: () => save('ready'), title: 'Ctrl+Enter' }, icon('check'), 'Approve'), syncBtn];
-  const dr = openOverlay({ title: d.name || p.name, sub: `Pitch #${p.id} · ${STATUS[p.status]?.[0] || p.status}`, body, foot });
+  const dr = openOverlay({ title: d.name || p.name, sub: `Pitch #${p.id} · ${STATUS[p.status]?.[0] || p.status}${locked ? ' · read-only' : ''}`, body, foot, isDirty: dirty });
   dr.panel.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !locked) { e.preventDefault(); save('ready'); } });
 }
 
@@ -513,13 +650,14 @@ async function renderCompanies(main, params) {
       { label: 'Stage', cls: 'tight hide-mobile', render: (c) => parse(c.data).stage || '—' },
       { label: 'Funding', sort: 'funding', cls: 'tight hide-mobile', render: (c) => fmtUSD(parse(c.data).total_funding_usd) },
       { label: 'Partner', sort: 'partner', cls: 'hide-mobile', render: (c) => c.partner },
-      { label: 'Sheet', sort: 'sync', cls: 'tight', render: (c) => [badge(c.sync_status), c.sheet_row ? h('div', { class: 'cell-sub' }, 'row ' + c.sheet_row) : null] },
+      { label: 'Sheet', sort: 'sync', cls: 'tight', render: (c) => [badge(c.sync_status), c.sheet_row ? (c.sheet_url ? h('a', { class: 'cell-sub row-link', href: c.sheet_url, target: '_blank', rel: 'noopener noreferrer', title: 'Open the sheet row' }, 'row ' + c.sheet_row) : h('div', { class: 'cell-sub' }, 'row ' + c.sheet_row)) : null] },
     ],
     onOpen: (c, reload) => openCompany(c.id, reload),
     bulk: (ids, done) => { const b = h('button', { class: 'btn sm primary', onclick: () => startJob('/api/sourcing/sync', { ids }, jobsMount, done) }, icon('sync'), 'Sync selected now'); if (!r.outbound.ready) disabledReason(b, 'Set and enable the outbound sheet in Settings first.'); return b; },
     emptyText: 'Accepted companies from sourcing runs appear here.',
   });
   const exportLink = h('a', { class: 'btn ghost', href: '/api/companies/export.csv', download: '' }, icon('download'), 'CSV');
+  exportLink.title = 'Exports the companies matching the current search and filters';
   exportLink.addEventListener('click', () => { exportLink.href = '/api/companies/export.csv?' + qs({ ...table.state, status: table.state.filters.status || '' }); });
   main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Sourced companies'), h('p', {}, 'Companies accepted against the outbound mandate, with their evidence. CSV exports neutralise formula-like cells.')), h('div', { class: 'actions' }, exportLink)), jobsMount, table);
   app.keys = table.keys; app.jobsMount = jobsMount; app.reloadPage = () => table.reload();
@@ -532,10 +670,12 @@ async function openCompany(id, after) {
   const body = h('div', { class: 'drawer-body' },
     (data.qualification || []).length ? h('div', { class: 'note bad' }, h('b', {}, 'No longer qualifies'), h('ul', { class: 'reasons' }, data.qualification.map((x) => h('li', {}, x)))) : h('p', { class: 'note ok' }, 'Qualifies: eligible HQ, B2B, active, early stage and total funding ≤ $3M — each with a source quote.'),
     c.sync_error ? h('p', { class: 'note bad' }, c.sync_error) : null,
+    c.sheet_row ? h('div', { class: 'note' }, h('p', {}, `Verified in the outbound sheet at row ${c.sheet_row}. Existing sheet rows are never overwritten.`), rowLink(c.sheet_url, c.sheet_row)) : null,
     recordFacts(rec), rec.description ? h('p', {}, rec.description) : null,
     (rec.warnings || []).length ? h('div', { class: 'note' }, h('b', {}, 'Warnings'), h('ul', { class: 'reasons' }, rec.warnings.map((w) => h('li', {}, w)))) : null,
     evidenceBlock(rec), sourcesBlock(rec.sources),
-    (data.sync_ops || []).length ? h('details', { class: 'section' }, h('summary', {}, `Sheet write history (${data.sync_ops.length})`), h('ul', { class: 'source-list' }, data.sync_ops.map((o) => h('li', {}, badge(o.status), `${fmtDate(o.updated_at)} ${o.sheet_range || ''} ${o.error || ''}`)))) : null);
+    (data.sync_ops || []).length ? h('details', { class: 'section' }, h('summary', {}, `Sheet write history (${data.sync_ops.length})`), h('ul', { class: 'source-list' }, data.sync_ops.map((o) => h('li', {}, badge(o.status), `${fmtDate(o.updated_at)} ${o.sheet_range || ''} ${o.error || ''}`)))) : null,
+    relatedSection({ name: c.name, website: rec.website, company: c.id }));
   const d = openOverlay({ title: c.name, sub: `${c.partner} · saved ${fmtDate(c.created_at)} · sheet: ${STATUS[c.sync_status]?.[0] || c.sync_status}${c.sheet_row ? ' (row ' + c.sheet_row + ')' : ''}`, body, foot: [h('button', { class: 'btn', onclick: () => d.close() }, 'Close')] });
 }
 
@@ -554,7 +694,7 @@ async function renderPartners(main) {
   }
   const name = h('input', { type: 'text', required: true, minlength: 2, maxlength: 200 });
   const site = h('input', { type: 'url', placeholder: 'https://partner.example', maxlength: 500 });
-  const form = h('form', { class: 'panel-body form', onsubmit: async (e) => { e.preventDefault(); try { await api('/api/partners', { method: 'POST', body: { name: name.value, website: site.value } }); name.value = site.value = ''; toast('Partner added'); load(); } catch (err) { toast(err.message, 'bad'); } } },
+  const form = h('form', { class: 'panel-body form', novalidate: true, onsubmit: async (e) => { e.preventDefault(); clearErrors({ name, site }); if (name.value.trim().length < 2) { fieldError(name, 'Enter the partner name (at least 2 characters).'); name.focus(); return; } if (site.value.trim() && !/^(https?:\/\/)?[^\s.]+\.[^\s]+$/i.test(site.value.trim())) { fieldError(site, 'Enter a web address such as https://partner.example'); site.focus(); return; } try { await api('/api/partners', { method: 'POST', body: { name: name.value, website: site.value } }); name.value = site.value = ''; toast('Partner added'); load(); } catch (err) { toast(err.message, 'bad'); } } },
     h('div', { class: 'field-row' }, h('label', {}, 'Partner name', name), h('label', {}, 'Official website', site)), h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add partner')));
   main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Portfolio partners'), h('p', {}, 'The crawler starts from each partner’s official site, follows portfolio pages, sitemaps and feeds, and collects official company links.'))),
     list, h('section', { class: 'panel', style: 'margin-top:16px' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Add a partner')), form));
@@ -564,11 +704,11 @@ async function renderPartners(main) {
 function openPartner(p, after) {
   const rep = parse(p.last_report);
   const site = h('input', { type: 'url', value: p.website, maxlength: 500 });
-  const d = openOverlay({ title: p.name, sub: `${p.run_count} runs · last visit ${p.last_sourced ? fmtDate(p.last_sourced) : 'never'}`, body: h('div', { class: 'drawer-body' },
+  const d = openOverlay({ isDirty: () => site.value !== p.website, title: p.name, sub: `${p.run_count} runs · last visit ${p.last_sourced ? fmtDate(p.last_sourced) : 'never'}`, body: h('div', { class: 'drawer-body' },
     h('label', {}, 'Official website', site),
     rep.pages_visited !== undefined ? h('div', { class: 'facts' }, h('div', {}, h('small', {}, 'Pages visited'), h('span', {}, rep.pages_visited)), h('div', {}, h('small', {}, 'Company links'), h('span', {}, rep.candidates)), h('div', {}, h('small', {}, 'Added last time'), h('span', {}, rep.added)), h('div', {}, h('small', {}, 'Crawl complete'), h('span', {}, rep.complete ? 'Yes' : 'No — limits or blocks'))) : h('p', { class: 'hint' }, 'Not crawled yet.'),
     (rep.warnings || []).length ? h('div', { class: 'note warn' }, h('b', {}, 'Last crawl warnings'), h('ul', { class: 'reasons' }, rep.warnings.map((w) => h('li', {}, w)))) : null),
-  foot: [h('button', { class: 'btn', onclick: () => d.close() }, 'Close'), h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/partners/' + p.id, { method: 'PATCH', body: { website: site.value } }); toast('Saved'); d.close(); after(); } catch (e) { toast(e.message, 'bad'); } } }, 'Save')] });
+  foot: [h('button', { class: 'btn', onclick: () => d.close() }, 'Close'), h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/partners/' + p.id, { method: 'PATCH', body: { website: site.value } }); toast('Saved'); d.close(true); after(); } catch (e) { toast(e.message, 'bad'); } } }, 'Save')] });
 }
 
 // ---------- activity ----------
@@ -598,6 +738,7 @@ async function openJob(id) {
     data.events.length ? h('div', { class: 'section' }, h('h3', {}, 'Events'), eventList(data.events)) : null);
   const foot = [h('button', { class: 'btn', onclick: () => d.close() }, 'Close')];
   if (j.status === 'running') foot.unshift(h('button', { class: 'btn danger', onclick: async () => { await api(`/api/jobs/${id}/cancel`, { method: 'POST' }); toast('Cancellation requested'); d.close(); } }, 'Cancel job'));
+  else if (RETRYABLE.has(j.status) && !(j.params && j.params.legacy)) foot.unshift(h('button', { class: 'btn', onclick: async () => { try { const n = await api(`/api/jobs/${id}/retry`, { method: 'POST' }); toast('Started again as job #' + n.id); d.close(true); location.hash = '#/activity?job=' + n.id; } catch (e) { toast(e.message, 'bad'); } } }, icon('sync'), 'Retry'));
   const d = openOverlay({ title: `${JOB_LABEL[j.kind] || j.kind} #${j.id}`, sub: STATUS[j.status]?.[0] || j.status, body, foot });
 }
 
@@ -712,6 +853,7 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- boot ----------
 $('#theme-btn').addEventListener('click', cycleTheme);
+$('#offline-retry').addEventListener('click', async () => { try { const r = await fetch('/health', { cache: 'no-store' }); if (r.ok) { setOffline(false); route(); return; } } catch {} toast('Still not reachable. Start the app again with start-go.sh.', 'bad'); });
 $('#help-btn').addEventListener('click', showShortcuts);
 $('#palette-btn').addEventListener('click', openPalette);
 $('#menu-btn').addEventListener('click', () => { const sb = $('#sidebar'); const open = !sb.classList.contains('open'); sb.classList.toggle('open', open); $('#menu-btn').setAttribute('aria-expanded', String(open)); if (open) $('nav a', sb).focus(); });

@@ -26,20 +26,21 @@ type Pitch struct {
 	UpdatedAt   string          `json:"updated_at"`
 	ReceivedAt  string          `json:"received_at"`
 	Error       string          `json:"error"`
+	SheetURL    string          `json:"sheet_url"`
 	Starred     bool            `json:"starred"`
 	DuplicateOf *int64          `json:"duplicate_of"`
 	JobID       *int64          `json:"job_id"`
 	LegacyRef   string          `json:"legacy_ref,omitempty"`
 }
 
-const pitchCols = `id,message_id,account,thread_id,mode,name,name_key,domain,status,data,created_at,updated_at,received_at,error,starred,duplicate_of,job_id,COALESCE(legacy_ref,'')`
+const pitchCols = `id,message_id,account,thread_id,mode,name,name_key,domain,status,data,created_at,updated_at,received_at,error,sheet_url,starred,duplicate_of,job_id,COALESCE(legacy_ref,'')`
 
 func scanPitch(sc interface{ Scan(...any) error }) (Pitch, error) {
 	var p Pitch
 	var data string
 	var star int
 	var dup, job sql.NullInt64
-	err := sc.Scan(&p.ID, &p.MessageID, &p.Account, &p.ThreadID, &p.Mode, &p.Name, &p.NameKey, &p.Domain, &p.Status, &data, &p.CreatedAt, &p.UpdatedAt, &p.ReceivedAt, &p.Error, &star, &dup, &job, &p.LegacyRef)
+	err := sc.Scan(&p.ID, &p.MessageID, &p.Account, &p.ThreadID, &p.Mode, &p.Name, &p.NameKey, &p.Domain, &p.Status, &data, &p.CreatedAt, &p.UpdatedAt, &p.ReceivedAt, &p.Error, &p.SheetURL, &star, &dup, &job, &p.LegacyRef)
 	p.Data = json.RawMessage(data)
 	p.Starred = star == 1
 	if dup.Valid {

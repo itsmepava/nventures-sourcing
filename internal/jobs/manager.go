@@ -186,6 +186,7 @@ type run struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	counters map[string]any
+	gids     map[string]map[string]int64
 	message  string
 	progress int
 }
@@ -219,6 +220,21 @@ func (r *run) finish(status, msg string) {
 	}
 	_ = r.env.Store.FinishJob(r.ctx, r.job.ID, status, r.counters, msg)
 	r.env.Store.Audit(r.ctx, r.job.ID, "finished", label(r.job.Kind)+": "+msg, map[string]any{"status": status, "counters": r.counters})
+}
+
+// rowLink builds a link to a verified row; the tab's numeric ID is looked up
+// once per job and failures only omit the anchor.
+func (r *run) rowLink(conn *Conn, sheetID, tab string, row int64) string {
+	if r.gids == nil {
+		r.gids = map[string]map[string]int64{}
+	}
+	m, ok := r.gids[sheetID]
+	if !ok {
+		m, _ = conn.Sheets.SheetGIDs(r.ctx, sheetID)
+		r.gids[sheetID] = m
+	}
+	gid, has := m[tab]
+	return google.RowURL(r.cfg.Mode, sheetID, tab, gid, has, row)
 }
 
 func (r *run) fail(err error) {

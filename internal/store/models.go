@@ -260,20 +260,21 @@ type Company struct {
 	SheetRow    *int64          `json:"sheet_row"`
 	SheetRange  string          `json:"sheet_range"`
 	SyncError   string          `json:"sync_error"`
+	SheetURL    string          `json:"sheet_url"`
 	Starred     bool            `json:"starred"`
 	Demo        bool            `json:"demo"`
 	JobID       *int64          `json:"job_id"`
 	LegacyRef   string          `json:"legacy_ref,omitempty"`
 }
 
-const companyCols = `id,name,name_key,COALESCE(domain,''),COALESCE(linkedin_key,''),data,partner,created_at,updated_at,sync_status,sheet_row,COALESCE(sheet_range,''),COALESCE(sync_error,''),starred,demo,job_id,COALESCE(legacy_ref,'')`
+const companyCols = `id,name,name_key,COALESCE(domain,''),COALESCE(linkedin_key,''),data,partner,created_at,updated_at,sync_status,sheet_row,COALESCE(sheet_range,''),COALESCE(sync_error,''),sheet_url,starred,demo,job_id,COALESCE(legacy_ref,'')`
 
 func scanCompany(sc interface{ Scan(...any) error }) (Company, error) {
 	var c Company
 	var data string
 	var row, job sql.NullInt64
 	var star, demo int
-	err := sc.Scan(&c.ID, &c.Name, &c.NameKey, &c.Domain, &c.LinkedInKey, &data, &c.Partner, &c.CreatedAt, &c.UpdatedAt, &c.SyncStatus, &row, &c.SheetRange, &c.SyncError, &star, &demo, &job, &c.LegacyRef)
+	err := sc.Scan(&c.ID, &c.Name, &c.NameKey, &c.Domain, &c.LinkedInKey, &data, &c.Partner, &c.CreatedAt, &c.UpdatedAt, &c.SyncStatus, &row, &c.SheetRange, &c.SyncError, &c.SheetURL, &star, &demo, &job, &c.LegacyRef)
 	c.Data = json.RawMessage(data)
 	if row.Valid {
 		c.SheetRow = &row.Int64
@@ -441,6 +442,15 @@ func (s *Store) SetCompanySync(ctx context.Context, id int64, status string, row
 		r = row
 	}
 	_, err := s.DB.ExecContext(context.WithoutCancel(ctx), `UPDATE companies SET sync_status=?, sheet_row=COALESCE(?, sheet_row), sheet_range=COALESCE(?, sheet_range), sync_error=?, updated_at=? WHERE id=?`, status, r, nullStr(rng), nullStr(errMsg), Now(), id)
+	return err
+}
+
+// SetSheetURL stores the link to a verified sheet row.
+func (s *Store) SetSheetURL(ctx context.Context, table string, id int64, link string) error {
+	if table != "companies" && table != "pitches" {
+		return fmt.Errorf("bad table")
+	}
+	_, err := s.DB.ExecContext(context.WithoutCancel(ctx), `UPDATE `+table+` SET sheet_url=? WHERE id=?`, link, id)
 	return err
 }
 

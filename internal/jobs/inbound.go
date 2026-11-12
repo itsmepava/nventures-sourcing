@@ -275,6 +275,9 @@ func (r *run) syncPitches(ids []int64, conn *Conn) {
 			google.InboundMatcher(domain.NameKey(data.Name), data.Website), hasPrior && (prior.Status == "uncertain" || prior.Status == "conflict"),
 			func() error { return r.env.Store.MarkSyncOp(r.ctx, op.ID, "writing", 0, "", "", true) })
 		r.applyPitchResult(p, data, op, res, &snapshot, row)
+		if (res.Status == "verified" || res.Status == "already_exists") && res.Row > 0 {
+			_ = r.env.Store.SetSheetURL(r.ctx, "pitches", p.ID, r.rowLink(conn, r.cfg.InboundSheet, r.cfg.InboundTab, res.Row))
+		}
 	}
 }
 

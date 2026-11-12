@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f6f8">
 <title>nVentures Sourcing</title>
 <link rel="icon" href="/static/brand/icon-32.png" type="image/png">
 <link rel="apple-touch-icon" href="/static/brand/icon-180.png">
-<script src="/static/theme.js"></script>
-<link rel="stylesheet" href="/static/app.css">
-<script type="module" src="/static/app.js"></script>
+<script src="/static/theme.js?v={{.Version}}"></script>
+<link rel="stylesheet" href="/static/app.css?v={{.Version}}">
+<script type="module" src="/static/app.js?v={{.Version}}"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -44,10 +45,11 @@
       <span class="mode-badge" id="mode-badge">{{.Mode}}</span>
       <div class="top-actions">
         <button class="btn ghost" id="palette-btn" aria-keyshortcuts="Control+K"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="hide-sm">Commands</span><kbd class="hide-sm">Ctrl K</kbd></button>
-        <button class="icon-btn" id="theme-btn" aria-label="Theme: system"><svg aria-hidden="true"><use href="#i-theme"/></svg></button>
+        <button class="btn ghost theme-btn" id="theme-btn" aria-label="Theme: system. Click to change." aria-keyshortcuts="t"><svg aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-label" class="hide-sm">System</span></button>
         <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" aria-keyshortcuts="?"><svg aria-hidden="true"><use href="#i-key"/></svg></button>
       </div>
     </header>
+    <div id="offline" class="banner bad-banner" role="alert" hidden><svg aria-hidden="true"><use href="#i-alert"/></svg><span><b>Can't reach the local nVentures app.</b> It may have been stopped. Retrying automatically; saved work is safe.</span><button class="btn sm" id="offline-retry">Retry now</button></div>
     <div id="banner"></div>
     <main id="main" tabindex="-1"><div class="loading-page" role="status">Loading…</div></main>
   </div>
