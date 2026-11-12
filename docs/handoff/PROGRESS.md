@@ -5,7 +5,7 @@ Prepared 12 November 2026. Claude Code should update this file after each meanin
 ## Implemented baseline
 
 - [x] Recover Python/React app and original brand attachments from chat backup.
-- [x] Verify Linux launcher, API smoke checks, 27 backend tests and 4 frontend tests.
+- [x] Verify Linux launcher, API smoke checks, 28 backend tests and 4 frontend tests.
 - [x] Prepare Go redesign architecture, cost/provider strategy, acceptance matrix and recovery safeguards.
 - [x] Supply local Go toolchain bootstrap, baseline preflight and Claude launch prompt.
 

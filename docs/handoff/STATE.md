@@ -10,7 +10,7 @@ Actual app root: `outputs/nventures-sourcing-2/` under that workspace. A GitHub 
 
 Known-good baseline on Linux:
 
-- 27 backend unittest checks and 4 frontend Vitest checks passed after recovery.
+- 28 backend unittest checks and 4 frontend Vitest checks passed after recovery.
 - TypeScript and Vite production build passed; compiled frontend exists under `frontend/dist/`.
 - `sh start.sh` runs one Python process and serves UI/API at `http://127.0.0.1:8000`.
 - Demo sourcing/API smoke checks, fake Sheets verification, two-message demo pitch intake, original image attachments, dashboard and dark mode were verified.

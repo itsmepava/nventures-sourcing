@@ -1,10 +1,23 @@
 import base64
+import os
 import unittest
 from unittest.mock import patch
-from app.inbox import Google
+from app.inbox import Google, ProviderError
 from app.inbox import extract, body_text, HEADERS
 
 class InboxTests(unittest.TestCase):
+    def setUp(self):
+        setting=patch.dict(os.environ, {'INBOX_SPREADSHEET_ID':'fixture-inbound-sheet'})
+        setting.start()
+        self.addCleanup(setting.stop)
+
+    def test_missing_destination_fails_before_network_write(self):
+        google=object.__new__(Google)
+        with patch.dict(os.environ, {'INBOX_SPREADSHEET_ID':''}), patch.object(google,'call') as call:
+            with self.assertRaises(ProviderError):
+                google.rows()
+            call.assert_not_called()
+
     def test_sheet_write_raw_and_full_readback(self):
         google=object.__new__(Google)
         data=dict(name='New Startup',description='Useful product',hq='',contact='a@example.com',notes='Source: message123')

@@ -26,6 +26,6 @@ Read these before implementation:
 
 ## Start immediately
 
-Run `python3 scripts/handoff_preflight.py`. If Go is absent, run `python3 scripts/bootstrap_go.py`; it installs a checksum-verified official Go SDK into `.tools/` without changing system packages. Add `.tools/go/bin` to the task's PATH. Implement phases in order and finish with `go test ./...`, `go vet ./...`, a production binary, the deterministic presentation script, migration verification and browser checks. The current baseline has 27 Python and 4 frontend tests.
+Run `python3 scripts/handoff_preflight.py`. If Go is absent, run `python3 scripts/bootstrap_go.py`; it installs a checksum-verified official Go SDK into `.tools/` without changing system packages. Add `.tools/go/bin` to the task's PATH. Implement phases in order and finish with `go test ./...`, `go vet ./...`, a production binary, the deterministic presentation script, migration verification and browser checks. The current baseline has 28 Python and 4 frontend tests.
 
 User-facing completion requires a launchable Go binary and tested complete workflows, not merely a Go scaffold or disconnected frontend. Tell the user what works, what was tested and exactly which external credentials remain, if any.
