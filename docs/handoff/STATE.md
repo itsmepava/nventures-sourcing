@@ -1,5 +1,7 @@
 # State at handoff — 12 November 2026
 
+> **Update, 12 November 2026 (Claude Code):** the Go rewrite is now implemented on `claude/go-redesign` as v0.3.0-alpha.1 (`cmd/`, `internal/`, `web/`). It passes its tests, the deterministic rehearsal, migration verification and browser QA; live Google verification is still pending because no OAuth credentials exist. See `PROGRESS.md` and `docs/GO-APP.md`. The section below describes the state *before* that work and is kept for history.
+
 ## What exists
 
 The implemented app is the recovered **Python FastAPI + React/TypeScript/Tailwind** workspace. The Go rewrite is requested and planned; no Go application has been implemented yet. This distinction must remain visible in release notes and progress reports.

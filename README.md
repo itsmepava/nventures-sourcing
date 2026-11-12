@@ -1,6 +1,30 @@
-# nVentures Sourcing v0.2.0-alpha.1
+# nVentures Sourcing
 
-A tested localhost Python/React prerelease with outbound sourcing, Gmail pitch intake, verified Google Sheets sync, branding and daily-use UI features. The complete Go redesign is specified for Claude Code in [CLAUDE.md](CLAUDE.md); it is planned, not implemented in this prerelease.
+## v0.3.0-alpha.1 — Go app (current development)
+
+One executable with the redesigned interface embedded, SQLite storage, the inbound Gmail pitch funnel, outbound sourcing against the mandate, and verified Google Sheets sync. No Python, Node.js, Docker or paid search/AI accounts are needed.
+
+```bash
+./start-go.sh              # Linux: builds on first run, opens http://127.0.0.1:8765
+./bin/nventures rehearse   # deterministic demo of both workflows; prints PASS
+```
+
+Windows: `Start nVentures (Go).cmd` next to `nventures.exe`. Demo mode works without credentials; live mode needs one Google consent step.
+
+- Guide and Google setup: [docs/GO-APP.md](docs/GO-APP.md)
+- Migration from the Python app and rollback: [docs/MIGRATION-GO.md](docs/MIGRATION-GO.md)
+- Five-minute presenter script: [docs/PRESENTER-SCRIPT.md](docs/PRESENTER-SCRIPT.md)
+- Release notes and known limits: [docs/RELEASE-NOTES-0.3.0-alpha.1.md](docs/RELEASE-NOTES-0.3.0-alpha.1.md)
+- Future Google Cloud hosting (not deployed): [docs/deploy/GOOGLE-CLOUD.md](docs/deploy/GOOGLE-CLOUD.md)
+- Implementation progress: [docs/handoff/PROGRESS.md](docs/handoff/PROGRESS.md)
+
+The Python/React app documented below (v0.2.0-alpha.1) is kept unchanged as the reference and fallback.
+
+---
+
+# Python/React app v0.2.0-alpha.1 (legacy reference)
+
+A tested localhost Python/React prerelease with outbound sourcing, Gmail pitch intake, verified Google Sheets sync, branding and daily-use UI features. The Go rewrite above (v0.3.0-alpha.1) replaces it once live Google verification is done.
 
 Download the attached application ZIP for the prebuilt interface, or build from source. No live credentials, private mail or databases are included.
 
