@@ -51,4 +51,6 @@ Updated 12 November 2026 by Claude Code on branch `claude/go-redesign`. Every it
 
 ## Latest checkpoint
 
-Next action for a future session: perform the live Google connection above, run one small live import and one outbound sync to a test tab, record results here, then publish v0.3.0-alpha.1 as a GitHub prerelease with the artifacts from `scripts/build_release.sh` (requires the user's go-ahead and GitHub authentication).
+12 Nov 2026: branch pushed; prerelease **v0.3.0-alpha.1** published at https://github.com/itsmepava/nventures-sourcing/releases/tag/v0.3.0-alpha.1 (tag → `8847458`; 4 platform binaries, source archive, DEPENDENCIES.txt, SHA256SUMS; downloaded assets re-verified against SHA256SUMS). v0.2.0-alpha.1 is unchanged.
+
+Next action: perform the live Google connection (External setup above), run one small live import and one outbound sync to a test tab, and record the results here.
