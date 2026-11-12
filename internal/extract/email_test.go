@@ -55,6 +55,9 @@ func TestReplyToForwardAndAttachments(t *testing.T) {
 	if d.Name != "Tidewell (demo)" || !d.NameGuessed || len(d.Attachments) != 1 || d.Attachments[0].Reviewed {
 		t.Errorf("direct pitch: %+v", d)
 	}
+	if strings.HasPrefix(d.Description, "Hi") || strings.Contains(d.Description, "Best,") || !strings.HasPrefix(d.Description, "Tidewell builds") {
+		t.Errorf("greeting/sign-off kept: %q", d.Description)
+	}
 	if d.Website != "https://tidewell.nventures-demo.test" {
 		t.Errorf("website %q", d.Website)
 	}

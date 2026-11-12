@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-mode="{{.Mode}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>nVentures Sourcing</title>
+<link rel="icon" href="/static/brand/icon-32.png" type="image/png">
+<link rel="apple-touch-icon" href="/static/brand/icon-180.png">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Primary">
+    <a class="brand" href="#/" aria-label="nVentures home">
+      <img class="logo logo-light" src="/static/brand/logo.png" alt="nVentures" width="160" height="49">
+      <img class="logo logo-dark" src="/static/brand/logo-dark.png" alt="" width="160" height="49" aria-hidden="true">
+    </a>
+    <p class="brand-sub">Sourcing workspace</p>
+    <nav>
+      <a href="#/" data-nav="dashboard"><svg aria-hidden="true"><use href="#i-home"/></svg>Overview</a>
+      <a href="#/inbox" data-nav="inbox"><svg aria-hidden="true"><use href="#i-inbox"/></svg>Pitch inbox<span class="count" id="nav-inbox-count" hidden></span></a>
+      <a href="#/sourcing" data-nav="sourcing"><svg aria-hidden="true"><use href="#i-radar"/></svg>Sourcing</a>
+      <a href="#/companies" data-nav="companies"><svg aria-hidden="true"><use href="#i-building"/></svg>Companies</a>
+      <a href="#/partners" data-nav="partners"><svg aria-hidden="true"><use href="#i-users"/></svg>Partners</a>
+      <a href="#/activity" data-nav="activity"><svg aria-hidden="true"><use href="#i-clock"/></svg>Activity</a>
+      <a href="#/settings" data-nav="settings"><svg aria-hidden="true"><use href="#i-gear"/></svg>Settings</a>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="mandate-mini">
+        <b>Outbound mandate</b>
+        <p>HQ in South Asia or Singapore · B2B · bootstrapped to seed · total funding ≤ $3M, all evidenced.</p>
+      </div>
+      <p class="version">v{{.Version}} · localhost</p>
+    </div>
+  </aside>
+  <div class="main-col">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 id="page-title">Overview</h1>
+      <span class="mode-badge" id="mode-badge">{{.Mode}}</span>
+      <div class="top-actions">
+        <button class="btn ghost" id="palette-btn" aria-keyshortcuts="Control+K"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="hide-sm">Commands</span><kbd class="hide-sm">Ctrl K</kbd></button>
+        <button class="icon-btn" id="theme-btn" aria-label="Theme: system"><svg aria-hidden="true"><use href="#i-theme"/></svg></button>
+        <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" aria-keyshortcuts="?"><svg aria-hidden="true"><use href="#i-key"/></svg></button>
+      </div>
+    </header>
+    <div id="banner"></div>
+    <main id="main" tabindex="-1"><div class="loading-page" role="status">Loading…</div></main>
+  </div>
+</div>
+<div id="drawer-root"></div>
+<div id="dialog-root"></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">nVentures needs JavaScript enabled in this local browser tab.</p></noscript>
+<svg width="0" height="0" class="sprite" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zM3 13h5l1 3h6l1-3h5"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5l8-3v19M12 9h8v12M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.3-5 6.5-5s5.7 1.5 6.5 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.2 2.2 3.5 5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" class="fill"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.7L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.7L20 16M20 20v-4h-4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20 11l-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/></symbol>
+</svg>
+</body>
+</html>

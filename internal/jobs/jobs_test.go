@@ -60,8 +60,10 @@ func newHarness(t *testing.T) *harness {
 	fast := netx.Policy{Attempts: 3, MaxSleep: 2 * time.Second}
 	crawler := &discovery.Crawler{F: &discovery.Fetcher{Cache: cacheAdapter{st}, Overrides: map[string]string{fixtures.DemoSuffix: fx.Addr}}, Limits: discovery.DefaultLimits}
 	h.mgr = jobs.NewManager(jobs.Env{Store: st, Crawler: crawler, Owner: "test",
-		Config:  func(context.Context) jobs.Config { h.mu.Lock(); defer h.mu.Unlock(); return h.cfg },
-		Connect: func(context.Context) (*jobs.Conn, error) { return &jobs.Conn{Gmail: &google.Gmail{Base: fx.URL, HTTP: hc, Tokens: tokens, Policy: fast}, Sheets: &google.Sheets{Base: fx.URL, HTTP: hc, Tokens: tokens, Policy: fast}}, nil }})
+		Config: func(context.Context) jobs.Config { h.mu.Lock(); defer h.mu.Unlock(); return h.cfg },
+		Connect: func(context.Context) (*jobs.Conn, error) {
+			return &jobs.Conn{Gmail: &google.Gmail{Base: fx.URL, HTTP: hc, Tokens: tokens, Policy: fast}, Sheets: &google.Sheets{Base: fx.URL, HTTP: hc, Tokens: tokens, Policy: fast}}, nil
+		}})
 	return h
 }
 

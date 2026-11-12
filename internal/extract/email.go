@@ -196,6 +196,8 @@ var (
 	nonPitchRe    = regexp.MustCompile(`(?i)\b(newsletter|webinar|unsubscribe from this list|your (order|receipt|invoice)|invoice #|payment received|job application|applying for the (position|role)|my (cv|resume) (is )?attached|press release distribution|guest post|seo services|link building)\b`)
 	testRe        = regexp.MustCompile(`(?i)\btest\b`)
 	deckHostRe    = regexp.MustCompile(`(?i)docsend\.com|drive\.google\.com|docs\.google\.com/presentation|dropbox\.com|pitch\.com|canva\.com|notion\.(so|site)|\.pdf(\?|$)|\.pptx?(\?|$)|slideshare\.net|pitch\s?deck`)
+	greetingRe    = regexp.MustCompile(`(?i)^\s*(hi|hello|hey|dear|greetings|good (morning|afternoon|evening))\b[^\n]{0,60}\n+`)
+	signoffRe     = regexp.MustCompile(`(?im)^\s*(best|best regards|kind regards|warm regards|regards|thanks|thank you|cheers|sincerely)[,.!]?\s*$`)
 	subjectNameRe = regexp.MustCompile(`(?i)^(?:(?:re|fwd?|fw)\s*:\s*)*(?:pitch(?:\s+deck)?|introducing|intro(?:duction)?|investment opportunity|fundraising)\s*[:\-–—|]\s*(.{2,80}?)\s*$|^(?:(?:re|fwd?|fw)\s*:\s*)*(.{2,60}?)\s*[\-–—|:]\s*(?:pitch(?: deck)?|seed round|pre-?seed|fundraising|investment opportunity)\b`)
 )
 
@@ -407,7 +409,11 @@ func Extract(in Input) Pitch {
 			}
 		}
 		if p.Description == "" {
-			p.Description = truncate(body, 4000)
+			desc := greetingRe.ReplaceAllString(body, "")
+			if loc := signoffRe.FindAllStringIndex(desc, -1); len(loc) > 0 {
+				desc = desc[:loc[len(loc)-1][0]]
+			}
+			p.Description = truncate(strings.TrimSpace(desc), 4000)
 		}
 		if p.Name == "" {
 			if m := subjectNameRe.FindStringSubmatch(p.Subject); m != nil {

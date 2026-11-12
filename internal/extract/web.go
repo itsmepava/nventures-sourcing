@@ -3,6 +3,7 @@ package extract
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/itsmepava/nventures-sourcing/internal/domain"
 )
@@ -15,9 +16,8 @@ type Page struct {
 }
 
 var (
-	sentenceRe   = regexp.MustCompile(`[^.!?\n]+[.!?]?`)
 	hqCueRe      = regexp.MustCompile(`(?i)\b(headquartered|headquarters|\bhq\b|based in|based out of)\b`)
-	b2bRe        = regexp.MustCompile(`(?i)\b(b2b|for businesses|to businesses|for enterprises|to enterprises|enterprise customers|for (small and medium|smes?|msmes?)|business customers|for companies|for teams|for (manufacturers|retailers|exporters|clinics|hospitals|banks|lenders|fleets|logistics companies|distributors|merchants|restaurants|schools))\b`)
+	b2bRe        = regexp.MustCompile(`(?i)\b(b2b|(?:for|to) (?:businesses|enterprises|companies|teams|smes?|msmes?|small and medium(?:-sized)? (?:businesses|enterprises)|manufacturers|retailers|exporters|clinics|hospitals|banks|lenders|fleets|logistics companies|distributors|merchants|restaurants|schools|utilities|insurers|employers)|enterprise customers|business customers)\b`)
 	b2cRe        = regexp.MustCompile(`(?i)\b(b2c|for consumers|consumer app|for individuals|for families|for households|direct[- ]to[- ]consumer)\b`)
 	activeRe     = regexp.MustCompile(`(?i)\b(paying customers|customers use|trusted by|serving \d|serves \d|clients include|customers include|in production|live with|used by \d|\d+\+? (customers|clients|businesses|merchants))\b`)
 	inactiveRe   = regexp.MustCompile(`(?i)\b(has shut down|ceased operations|no longer operating|we are closing|wound down)\b`)
@@ -30,14 +30,59 @@ var (
 	teamRe       = regexp.MustCompile(`(?i)\b(?:team of|we are) (\d{1,4}) (?:people|employees|engineers|members)\b`)
 )
 
-// Sentences splits text into trimmed sentences of reasonable length.
+// abbreviations that end with a period but do not end a sentence.
+var abbrevs = map[string]bool{"inc": true, "ltd": true, "pvt": true, "co": true, "corp": true, "llc": true, "plc": true, "mr": true, "mrs": true, "ms": true, "dr": true, "st": true, "no": true, "vs": true, "approx": true, "e.g": true, "i.e": true, "u.s": true, "u.k": true, "jan": true, "feb": true, "mar": true, "apr": true, "jun": true, "jul": true, "aug": true, "sep": true, "sept": true, "oct": true, "nov": true, "dec": true, "est": true, "mn": true, "bn": true}
+
+// Sentences splits text into sentences. A period ends a sentence only when
+// followed by whitespace and an uppercase letter, digit or quote, and when it
+// does not close a known abbreviation or single initial. Decimal numbers such
+// as "USD 1.2 million" are therefore never split.
 func Sentences(text string) []string {
 	var out []string
-	for _, s := range sentenceRe.FindAllString(text, -1) {
-		s = strings.TrimSpace(s)
-		if len(s) >= 15 && len(s) <= 400 {
-			out = append(out, s)
+	for _, line := range strings.Split(text, "\n") {
+		r := []rune(line)
+		start := 0
+		for i := 0; i < len(r); i++ {
+			c := r[i]
+			if c != '.' && c != '!' && c != '?' {
+				continue
+			}
+			j := i + 1
+			for j < len(r) && (r[j] == '.' || r[j] == '!' || r[j] == '?' || r[j] == '"' || r[j] == '\u201d' || r[j] == ')') {
+				j++
+			}
+			if j < len(r) && r[j] != ' ' && r[j] != '\t' {
+				continue // e.g. 1.2 or example.com
+			}
+			k := j
+			for k < len(r) && (r[k] == ' ' || r[k] == '\t') {
+				k++
+			}
+			if k < len(r) && !(unicode.IsUpper(r[k]) || unicode.IsDigit(r[k]) || r[k] == '"' || r[k] == '\u201c' || r[k] == '(') {
+				continue
+			}
+			if c == '.' {
+				w := i - 1
+				for w >= start && (unicode.IsLetter(r[w]) || r[w] == '.') {
+					w--
+				}
+				word := strings.ToLower(string(r[w+1 : i]))
+				if abbrevs[word] || (len([]rune(word)) == 1 && unicode.IsLetter(r[i-1])) {
+					continue
+				}
+			}
+			out = appendSentence(out, string(r[start:j]))
+			start = j
 		}
+		out = appendSentence(out, string(r[start:]))
+	}
+	return out
+}
+
+func appendSentence(out []string, s string) []string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 15 && len(s) <= 400 {
+		out = append(out, s)
 	}
 	return out
 }

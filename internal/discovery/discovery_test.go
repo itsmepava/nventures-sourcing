@@ -61,6 +61,12 @@ func TestDiscoverAndQualifyFixturePartners(t *testing.T) {
 			reasons := domain.Qualifies(rec)
 			if len(reasons) == 0 {
 				accepted[cand.URL] = true
+				slug := strings.TrimSuffix(strings.TrimPrefix(cand.URL, "https://"), fixtures.DemoSuffix+"/")
+				want := map[string]float64{"ledgerleaf": 8e5, "factorysignal": 1.2e6, "cargopilot": 9.5e5, "clinicrelay": 6e5, "routedesk": 2.9e6, "procurepath": 3e6, "fieldorbit": 0, "gridloom": 4e5, "invoicespring": 2.5e5}
+				wantHQ := map[string]string{"ledgerleaf": "Sri Lanka", "factorysignal": "India", "cargopilot": "Bangladesh", "clinicrelay": "Nepal", "routedesk": "Pakistan", "procurepath": "Singapore", "fieldorbit": "Bhutan", "gridloom": "Maldives", "invoicespring": "Afghanistan"}
+				if rec.TotalFundingUSD == nil || *rec.TotalFundingUSD != want[slug] || rec.HQCountry != wantHQ[slug] {
+					t.Errorf("%s: funding %v hq %q", slug, rec.TotalFundingUSD, rec.HQCountry)
+				}
 				for field, ev := range rec.Evidence {
 					for _, e := range ev {
 						if !strings.HasPrefix(e.URL, "https://") || e.Quote == "" {
