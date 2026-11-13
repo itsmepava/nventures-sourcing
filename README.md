@@ -1,8 +1,8 @@
 # nVentures Sourcing
 
-## v0.3.0-alpha.2 — Go app (current development)
+## v0.4.0-alpha.1 — nVentures Workspace (current development)
 
-One executable with the redesigned interface embedded, SQLite storage, the inbound Gmail pitch funnel, outbound sourcing against the mandate, and verified Google Sheets sync. No Python, Node.js, Docker or paid search/AI accounts are needed.
+One Go executable (JSON API) with the separate web frontend (`web/src`) embedded, SQLite storage, sign-in with roles (admin, sourcer, pitch responder, viewer), team assignments, notes, notifications and schedules, the inbound Gmail pitch funnel, outbound sourcing against the mandate, and verified Google Sheets sync. No Python, Node.js, Docker or paid search/AI accounts are needed.
 
 ```bash
 ./start-go.sh              # Linux: builds on first run, opens http://127.0.0.1:8765
@@ -13,8 +13,9 @@ Windows: `Start nVentures (Go).cmd` next to `nventures.exe`. Demo mode works wit
 
 - Guide and Google setup: [docs/GO-APP.md](docs/GO-APP.md)
 - Migration from the Python app and rollback: [docs/MIGRATION-GO.md](docs/MIGRATION-GO.md)
+- Frontend (separate project): [web/README.md](web/README.md)
 - Five-minute presenter script: [docs/PRESENTER-SCRIPT.md](docs/PRESENTER-SCRIPT.md)
-- Release notes and known limits: [alpha.2](docs/RELEASE-NOTES-0.3.0-alpha.2.md) · [alpha.1](docs/RELEASE-NOTES-0.3.0-alpha.1.md)
+- Release notes and known limits: [0.4.0-alpha.1](docs/RELEASE-NOTES-0.4.0-alpha.1.md) · [0.3.0-alpha.2](docs/RELEASE-NOTES-0.3.0-alpha.2.md) · [alpha.1](docs/RELEASE-NOTES-0.3.0-alpha.1.md)
 - Screenshots (light and dark): [docs/screenshots/](docs/screenshots/)
 - Future Google Cloud hosting (not deployed): [docs/deploy/GOOGLE-CLOUD.md](docs/deploy/GOOGLE-CLOUD.md)
 - Implementation progress: [docs/handoff/PROGRESS.md](docs/handoff/PROGRESS.md)

@@ -36,7 +36,7 @@ export function templatesPanel() {
 }
 
 const KIND = { inbound_import: 'Inbox import', outbound_run: 'Sourcing run' };
-const every = (m) => m % 1440 === 0 ? `every ${m / 1440} day${m === 1440 ? '' : 's'}` : m % 60 === 0 ? `every ${m / 60} hour${m === 60 ? '' : 's'}` : `every ${m} minutes`;
+const every = (m) => ({ 60: 'every hour', 1440: 'every day', 10080: 'every week' }[m] || (m % 1440 === 0 ? `every ${m / 1440} days` : m % 60 === 0 ? `every ${m / 60} hours` : `every ${m} minutes`));
 
 export function schedulesPanel() {
   const list = h('div', { class: 'table-wrap' });
@@ -76,5 +76,5 @@ export function schedulesPanel() {
   h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add schedule')));
   load().catch((e) => list.replaceChildren(h('p', { class: 'note bad' }, e.message)));
   return h('section', { class: 'panel', style: 'margin-top:16px' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Automation'), h('p', {}, 'Runs while the app is open on this computer. Admins and the relevant role are notified of each result.'))),
-    h('div', { class: 'grid cols-2 flush' }, list, form));
+    list, h('div', { class: 'subpanel' }, h('h3', {}, 'Add a schedule'), form));
 }

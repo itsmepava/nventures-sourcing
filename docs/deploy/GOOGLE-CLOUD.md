@@ -18,17 +18,17 @@
 
 ## What the app already supports for hosting
 
-- `NV_HOST` / `NV_PORT` (or `PORT`) binding; non-loopback binding is **refused** unless `NV_ACCESS_TOKEN` (≥ 24 characters) is set, which then requires sign-in (HttpOnly, SameSite=Strict cookie; `Secure` when `NV_BASE_URL` is https).
+- `NV_HOST` / `NV_PORT` (or `PORT`) binding; non-loopback binding is **refused** unless `NV_ALLOW_REMOTE=1` and `NV_BASE_URL` are set. Every user signs in with their own account and role (HttpOnly, SameSite=Lax session cookies; `Secure` when `NV_BASE_URL` is https).
 - `NV_BASE_URL` for the external URL: used for the OAuth redirect and as an allowed `Host`; Host/Origin checks stay on (DNS-rebinding and cross-site protection are never disabled).
 - `NV_DATA_DIR` for the persistent disk mount; `/health` (liveness) and `/readyz` (database readiness); `NV_LOG_JSON=1` structured logs without secrets or email bodies; graceful shutdown on SIGTERM with job cancellation and honest *interrupted* states; build version in `/health`.
 - An instance lease in SQLite prevents two processes using one data directory.
 
 ## Before any internet exposure (required)
 
-1. Team access: put Identity-Aware Proxy or an authenticating reverse proxy in front, in addition to `NV_ACCESS_TOKEN`.
+1. Team access: put Identity-Aware Proxy or an authenticating reverse proxy in front, in addition to the app’s own accounts.
 2. HTTPS only; set `NV_BASE_URL=https://…`.
 3. Google OAuth: create a **Web application** OAuth client with redirect `https://<host>/oauth/callback` (the local Desktop client is not valid for a hosted callback). Re-run consent.
-4. Secrets: provide `NV_ACCESS_TOKEN` and the client file through Secret Manager or the VM's protected environment, never in the image or Git.
+4. Secrets: provide the OAuth client file through Secret Manager or the VM's protected environment, never in the image or Git.
 5. Service identity: least privilege; the VM needs no broad Google API roles because the app uses the user's OAuth consent.
 6. Backups: scheduled disk snapshots **and** a nightly `nventures backup` (consistent `VACUUM INTO`) copied off the VM; test a restore.
 7. Maintenance access via IAP SSH only; no public SSH.
@@ -46,7 +46,7 @@ sudo install -m 0755 nventures-0.3.0-alpha.1-linux-amd64 /usr/local/bin/nventure
 # [Service]
 # User=nventures
 # Environment=APP_MODE=live NV_DATA_DIR=/var/lib/nventures NV_HOST=127.0.0.1 NV_PORT=8765 NV_BASE_URL=https://sourcing.example NV_NO_BROWSER=1 NV_LOG_JSON=1
-# EnvironmentFile=/etc/nventures/secrets.env   # NV_ACCESS_TOKEN=..., mode 0600
+# Environment=NV_ALLOW_REMOTE=1   # only with the HTTPS proxy in front
 # ExecStart=/usr/local/bin/nventures serve
 # Restart=on-failure
 ```

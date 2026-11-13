@@ -1,4 +1,4 @@
-# nVentures Sourcing — Go app (v0.3.0-alpha.1)
+# nVentures Workspace — Go app (v0.4.0-alpha.1)
 
 One executable serves the redesigned interface, the API, database migrations and background jobs on `http://127.0.0.1:8765`. Data lives in a local SQLite file. Python, Node.js, Docker, Redis, Ollama and paid provider accounts are **not** needed.
 
@@ -23,6 +23,32 @@ nventures version
 ```
 
 The legacy Python app is unchanged and still starts with `sh start.sh` on port 8000. The two never share a database.
+
+## Accounts and roles
+
+The first time the app opens it asks you to **set up the workspace**: create the first admin account (name, email, password of at least 10 characters). After that everyone signs in with their own account.
+
+| Role | Can |
+|---|---|
+| **Admin** | Everything: team members, settings, destinations, Google connection, reply templates, automation schedules, demo reset |
+| **Sourcer** | Run outbound sourcing and company research, sync companies to the outbound sheet, edit partners, assign/stage/annotate companies |
+| **Pitch responder** | Import pitches from Gmail, review/approve/skip, sync pitches, assign/stage/annotate pitches, draft replies to founders |
+| **Viewer** | Read everything; change nothing |
+
+Every role can shortlist (except viewers), use My work, notifications, filters and exports. Controls a role can't use stay visible but locked, with an explanation. The server enforces the same rules on every API call (tested for every role against every endpoint).
+
+- **Team** (admins): add a member with a role; the app shows a **one-time password** to hand over privately. The member must choose their own password at first sign-in. Admins can change roles, reset passwords (signs the person out everywhere) and deactivate members (history is kept). The last active admin can't be removed.
+- **Sessions** last 7 days of inactivity, use HttpOnly SameSite cookies, and are stored only as hashes. Five wrong passwords for the same email lock sign-in for 15 minutes. Passwords are hashed with PBKDF2-SHA256 (600,000 iterations, Go standard library).
+- **Forgotten password:** an admin resets it. If the only admin is locked out, stop the app and restore from a backup or ask for help; there is deliberately no back door.
+- **Who did what:** every audit event and job records the person (or "Scheduler"). Preferences such as theme and saved filters are per person.
+
+## Team workflow
+
+- **Assignments, stages and follow-ups** on every pitch (New → Reviewing → Contacted → Meeting → Passed/Progressed) and company (Not contacted → Contacted → Meeting → Passed/Progressed). These live only in nVentures and are never written to the sheets.
+- **My work** lists everything assigned to you, follow-ups due first. Assigning someone sends them a notification (bell in the top bar, or press `n`).
+- **Notes** on pitches and companies are internal, timestamped and attributed.
+- **Reply to founder** (pitch responders): pick a template, edit it, then *Open in my email* opens a ready draft in your own mail program, or *Copy draft*. nVentures never sends email; Gmail access stays read-only. Admins edit templates in Settings; placeholders are `{{company}}`, `{{founder}}`, `{{me}}`.
+- **Automation** (admins, Settings): schedule inbox imports and sourcing runs every hour/4 hours/12 hours/day/week, optionally with verified sheet writes. Schedules run while the app is open on this computer, use exactly the same rules as manual runs, and notify admins plus the relevant role. Inbox imports are skipped (and say so) while Google isn't connected.
 
 ## Modes and data
 
@@ -49,7 +75,8 @@ Environment variables win over `.env`. The `.env` reader supports `KEY=value`, `
 | `GMAIL_PITCH_QUERY` | Gmail search used for imports |
 | `MAX_RESEARCH_PER_RUN` | Company research cap per sourcing run (default 45) |
 | `NV_OLLAMA_URL` | Optional local model endpoint (loopback only) |
-| `NV_BASE_URL`, `NV_ACCESS_TOKEN` | Only for future hosting; see `docs/deploy/GOOGLE-CLOUD.md` |
+| `NV_BASE_URL`, `NV_ALLOW_REMOTE` | Only for future hosting; a non-loopback bind needs both. See `docs/deploy/GOOGLE-CLOUD.md` |
+| `NV_WEB_DIR` | Development only: serve the frontend from this folder (e.g. `web/src`) instead of the embedded copy |
 
 Values saved in **Settings** (sheet IDs, tabs, expected account, query) are stored in the database and override `.env`.
 

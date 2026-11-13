@@ -47,7 +47,12 @@ export async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: { 'X-NV-Request': '1' } };
   if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
   let res;
-  try { res = await fetch(path, init); } catch { setOffline(true); throw new Error('The local nVentures server is not reachable. Is it still running? Start it again with start-go.sh.'); }
+  try { res = await fetch(path, init); } catch {
+    // A single failed request (for example one cut off by navigation) is not
+    // proof the app stopped: confirm with a health check before saying so.
+    if (!(await reachable())) setOffline(true);
+    throw new Error('The local nVentures server is not reachable. Is it still running? Start it again with start-go.sh.');
+  }
   setOffline(false);
   const text = await res.text();
   let data = null;
@@ -58,6 +63,9 @@ export async function api(path, opts = {}) {
 }
 
 let offline = false;
+async function reachable() {
+  try { const r = await fetch('/health', { cache: 'no-store', signal: AbortSignal.timeout(3000) }); return r.ok; } catch { return false; }
+}
 export function setOffline(on) {
   if (on === offline) return;
   offline = on;

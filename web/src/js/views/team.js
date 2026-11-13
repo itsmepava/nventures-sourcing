@@ -27,7 +27,7 @@ export async function renderTeam(main) {
         h('td', {}, h('div', { class: 'cell-main' }, u.name, me ? h('span', { class: 'badge info', style: 'margin-left:6px' }, 'You') : null), h('div', { class: 'cell-sub' }, u.email)),
         h('td', { class: 'tight' }, role),
         h('td', { class: 'tight hide-mobile' }, u.last_login_at ? fmtDate(u.last_login_at) : 'Never'),
-        h('td', { class: 'tight' }, u.active ? (u.must_change_password ? h('span', { class: 'badge warn' }, 'Invited') : badge('completed')) : h('span', { class: 'badge' }, 'Deactivated')),
+        h('td', { class: 'tight' }, u.active ? (u.must_change_password ? h('span', { class: 'badge warn' }, 'Invited') : h('span', { class: 'badge ok' }, 'Active')) : h('span', { class: 'badge' }, 'Deactivated')),
         h('td', { class: 'tight' }, h('div', { class: 'actions' },
           h('button', { class: 'btn sm', onclick: async () => {
             if (!(await confirmDialog(`Reset ${u.name}'s password?`, 'They will be signed out everywhere and must sign in with a new one-time password.', 'Reset password'))) return;

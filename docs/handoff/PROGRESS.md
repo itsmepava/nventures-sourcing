@@ -1,6 +1,6 @@
 # Execution progress
 
-Updated 12 November 2026 by Claude Code on branch `claude/go-redesign`. Every item below records an executed check; mock-backed and live-provider verification are listed separately.
+Updated 13 November 2026 by Claude Code on branch `claude/go-redesign`. Every item below records an executed check; mock-backed and live-provider verification are listed separately.
 
 ## Implemented baseline (before Go)
 
@@ -49,6 +49,26 @@ Audit against CLAUDE.md / IMPLEMENTATION.md / ACCEPTANCE.md found dark mode **pr
 | Browser QA (Chromium, fixture data) | Light/Dark/System via labelled control; explicit Dark kept under light OS and after reload; System followed a live OS switch; `g c`, `g t`, `t`, `j`, `/`, Ctrl+K, Escape; unsaved-edit guard on Escape and on navigation (URL restored on cancel); inline validation focuses the bad field; double-click started one job; clear filters + filtered empty state; search persisted across reload; offline banner and auto-reconnect; Retry created job with `retry_of`; row link opened the exact verified row; cross-module panel linked GridLoom pitch ↔ company; connection test: 3/3 OK, 0 rows written; mobile 375 px no horizontal scroll |
 | Screenshots | `docs/screenshots/` (overview light/dark, companies light, pitch review dark, settings dark, mobile inbox dark) |
 
+## v0.4.0-alpha.1 — team workspace MVP (13 Nov 2026)
+
+User request: build the full nVentures workspace unattended, with roles (admin, sourcer, pitch responder, viewer), a clean branded UI with no errors, Go backend, and **frontend and backend kept separate**. Google connection and team access from other machines were explicitly deferred by the user.
+
+Delivered: accounts and roles (schema 3), sessions, first-run setup, role checks on every route, team management, assignments, stages and follow-ups, notes, My work, notifications, reply templates and drafts (no sending), schedules, per-person preferences, actor attribution. The backend is JSON-only; the frontend is a standalone ES-module app in `web/src`, embedded for one-command use.
+
+| Check | Result |
+|---|---|
+| `go vet ./...` / `go test -count=1 ./...` | clean / pass (11 packages) |
+| Role × endpoint matrix test | 4 roles × 30 endpoints: allowed never 401/403, forbidden always 403, no 5xx |
+| `-race` httpapp, jobs, store, discovery | pass |
+| `nventures rehearse` (production build 0.4.0-alpha.1) | PASS, now including first-run setup |
+| Upgrade schema 2 → 3 | the user's demo DB copy (9 companies, 16 pitches, 52 events) and the migrated-Python DB copy: all records identical; existing pitches start at stage "new" |
+| Embedded frontend | all assets 200 with content ETags, 304 on revalidation, 404 for unknown paths; setup screen loads with zero console messages |
+| Browser sweep | admin 14 views, responder 11, sourcer 10, viewer 11: no error states, no JS errors; locked controls verified per role |
+| UI flows | setup validation, setup, add member with one-time password, forced password change, sign-in, sign-out, assign + follow-up + note, reply draft filled, notification shown, schedule added and run |
+| Fixed during QA | spurious offline banner after a cut-off request; "Completed" shown for active members; cramped schedule list; title wrapping; stacked summary cards; template order; scroll position on navigation; tab title on sign-in |
+
+QA accounts for the throwaway QA workspace are in `.handoff/qa3-accounts.txt` (git-ignored). On the first launch after this upgrade, the user's own app shows **Set up your workspace** to create their admin account; their existing demo data is kept.
+
 ## Not verified (external)
 
 - **Live Gmail/Sheets**: no OAuth client or consent available. Verified only against the local fixture implementing the same API contracts.
@@ -64,6 +84,8 @@ Audit against CLAUDE.md / IMPLEMENTATION.md / ACCEPTANCE.md found dark mode **pr
 5. First live import with a small limit and no sync; review, then sync.
 
 ## Latest checkpoint
+
+13 Nov 2026: v0.4.0-alpha.1 (team workspace MVP) committed, pushed and published as a GitHub prerelease. The next session can continue in a Claude Code cloud session from branch `claude/go-redesign`. In the cloud: run `python3 scripts/bootstrap_go.py` (or use an installed Go 1.26+), `go test ./...`, `go run ./cmd/nventures rehearse`. There is no `.env`, no Python app and no user data there, which is fine because demo mode needs none.
 
 12 Nov 2026 (later): v0.3.0-alpha.2 committed locally on `claude/go-redesign` (not yet pushed or released).
 

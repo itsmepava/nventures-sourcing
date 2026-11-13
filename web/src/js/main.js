@@ -34,6 +34,7 @@ export async function route() {
   for (const w of app.watchers.values()) w.detach();
   const main = $('#main');
   main.replaceChildren(h('div', { class: 'loading', role: 'status' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Loading…'));
+  if (name !== app.page) window.scrollTo(0, 0);
   try { await loadState(); app.page = name; await render(main, params); }
   catch (e) { main.replaceChildren(h('div', { class: 'note bad error-state', role: 'alert' }, h('p', {}, e.message), h('button', { class: 'btn', onclick: () => route() }, icon('sync'), 'Try again'))); }
   if (app.focusMain) { main.focus({ preventScroll: true }); }

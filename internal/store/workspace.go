@@ -378,7 +378,7 @@ type Template struct {
 
 // Templates lists reply templates.
 func (s *Store) Templates(ctx context.Context) ([]Template, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,subject,body,updated_at FROM reply_templates ORDER BY lower(name)`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,subject,body,updated_at FROM reply_templates ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

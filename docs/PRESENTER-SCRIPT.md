@@ -4,6 +4,8 @@
 
 ---
 
+**Before the audience arrives:** set up the workspace (first admin) and add a *Pitch responder* and a *Sourcer* in **Team**, signing in once as each to set their passwords.
+
 **0:00 — What this is (Overview page)**
 > “This is nVentures Sourcing: one small program on this laptop. No servers, no paid AI or search subscriptions. It does two jobs — proactive sourcing against our mandate, and an inbound funnel for pitches that arrive by email.”
 
@@ -39,8 +41,11 @@ Optional: open the pitch *GridLoom (demo)* → *Across nVentures* shows the same
 **4:20 — Safe to repeat (Pitch inbox → Import again; or Sourcing → Start run again)**
 > “Running it again adds nothing: no duplicate companies and no duplicate rows. If the network drops mid-write, it reconciles against the sheet before writing again.”
 
-**4:40 — Daily use (Ctrl+K, then type “theme”; press ? for shortcuts; Activity page)**
-> “Keyboard commands, dark mode, saved filters, shortlist, CSV export, and a full history of every job.”
+**4:30 — The team (Team page, then a pitch → Team workflow)**
+> “Everyone has their own sign-in and role: admins, sourcers, pitch responders and viewers. I can assign this pitch to a responder with a follow-up date — they get a notification and it appears in their *My work* list. Every action is recorded with the person's name.”
+
+**4:45 — Daily use (Ctrl+K, then type “theme”; press ? for shortcuts; Activity page)**
+> “Keyboard commands, dark mode, saved filters, shortlist, CSV export, scheduled runs, and a full history of every job.”
 
 **4:55 — Close**
 > “To go live we only need one thing from us: connect the pitch mailbox in Settings with Google's consent screen. Everything else is built and tested.”

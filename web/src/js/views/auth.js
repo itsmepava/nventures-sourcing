@@ -65,6 +65,7 @@ export function renderAuth(root, { setup, mustChange, mode, error, onDone }) {
       h('p', { class: 'hint center' }, 'Forgot your password? Ask an admin to reset it.'));
   }
   if (mode === 'demo') card.append(h('p', { class: 'hint center' }, 'Demo mode: Gmail, Sheets and websites are local fixtures.'));
+  document.title = (setup ? 'Set up' : mustChange ? 'Choose password' : 'Sign in') + ' · nVentures';
   root.replaceChildren(card);
   requestAnimationFrame(() => { const i = card.querySelector('input'); if (i) i.focus(); });
 }
