@@ -69,6 +69,35 @@ Delivered: accounts and roles (schema 3), sessions, first-run setup, role checks
 
 QA accounts for the throwaway QA workspace are in `.handoff/qa3-accounts.txt` (git-ignored). On the first launch after this upgrade, the user's own app shows **Set up your workspace** to create their admin account; their existing demo data is kept.
 
+## v0.5.0-alpha.1 — pitch-deck reading (13 Nov 2026, cloud session)
+
+User request: keep building to completion per the original plan. The plan's remaining optional Phase 2 item, reading PDF/PPTX decks, "only if it fits the dependency budget and has real tests/bounds", is now done with the Go standard library only. Linked modules are unchanged (9 plus the main module).
+
+Delivered:
+- `internal/deck`: a bounded PDF and PPTX text extractor, plus deterministic facts with page and quote.
+- Read-only `Gmail.Attachment`.
+- Schema 4 `pitch_decks`.
+- `POST /api/pitches/{id}/decks` (inbox.review).
+- A review-drawer section with Use / Add to notes and searchable text.
+- Demo PDF/PPTX fixtures, and a rehearsal step that reads a deck.
+
+Also fixed: the 375 px top-bar overflow on every page (a v0.4 regression) and the bare `#/demo-sheet` error.
+
+| Check | Result |
+|---|---|
+| `go vet ./...` / `go test -count=1 ./...` | clean / pass (12 packages with tests) |
+| `-race` httpapp, jobs, store, discovery, deck | pass |
+| Real-tool decks (LibreOffice PDF+PPTX, reportlab, Chromium, python-pptx) | expected text in order, matches `pdftotext`; encrypted → protected; image-only → no text |
+| Synthetic PDFs | object streams + XRef stream, Type0/ToUnicode, filter chains, Differences, TJ spacing, forms, inline images, cycles, deep nesting, 64 MB bomb: pass |
+| Mutation testing (opt-in `DECK_MUTATION_HUNT=1`) | ~1.2M inputs, recovery off, 3 s watchdog: 0 panics, 0 hangs after fixing 2 bugs (kept as regressions) |
+| HTTP | role matrix incl. decks; both demo decks read with expected facts; pitch unchanged; re-read replaces; 404/400/409/too-large paths |
+| Upgrade | schema 1 → 4 keeps records; readings cascade with their pitch |
+| `nventures rehearse` | PASS, now reading the Tidewell deck (HQ "Chattogram, Bangladesh", p. 2) |
+| Release build `VERSION=0.5.0-alpha.1` | 4 binaries + source + DEPENDENCIES + SHA256SUMS; checksums OK; linux/amd64 `rehearse` PASS with `env -i PATH=/nonexistent`; embedded UI served |
+| Browser QA (Chromium, cloud) | deck read/Use/Add to notes/Find/unsaved guard; 10 routes × {375, 1360} × {light, dark}: no overflow, no error states, no console errors |
+
+Note: Go's native fuzzer stalls after its seed corpus in this sandbox, though every corpus input runs in under 3 ms. The opt-in mutation test with a watchdog was used instead, and the fuzz target still runs its seeds in `go test`.
+
 ## Not verified (external)
 
 - **Live Gmail/Sheets**: no OAuth client or consent available. Verified only against the local fixture implementing the same API contracts.
@@ -84,6 +113,8 @@ QA accounts for the throwaway QA workspace are in `.handoff/qa3-accounts.txt` (g
 5. First live import with a small limit and no sync; review, then sync.
 
 ## Latest checkpoint
+
+13 Nov 2026 (cloud, later): v0.5.0-alpha.1 committed and pushed on `claude/go-redesign-b8xpo1`, and release artifacts were built and verified locally in the cloud container (`release/` is git-ignored). **Not published**: no GitHub prerelease exists for 0.4.0-alpha.1 or 0.5.0-alpha.1. Publish only on the user's explicit request (`VERSION=0.5.0-alpha.1 sh scripts/build_release.sh` at the release commit; attach every file in `release/v0.5.0-alpha.1`). Next: live Google connection (External setup above), then a small live import including one deck read.
 
 13 Nov 2026 (cloud session): re-verified on Go 1.27.4 in a Claude Code cloud container on branch `claude/go-redesign-b8xpo1` (from `9f4ebeb`). `go vet ./...` clean; `go test -count=1 ./...` all packages pass; race tests for httpapp/jobs/store/discovery pass; `go run ./cmd/nventures rehearse` prints PASS. One fix: `TestSSRFProtections` assumed the host resolver answers `localhost.`; the cloud sandbox resolver answers nothing, so that one DNS-loopback sub-check now runs only when the resolver can answer it. The dial-time private-address guard is still covered by the redirect-to-127.0.0.1 case, and the fetcher still ignores environment proxies. Correction to the entry below: the **v0.4.0-alpha.1 GitHub prerelease is not published**. The latest published release is v0.3.0-alpha.2. Creating the prerelease was blocked by the permission checker, so publish only on explicit request: `VERSION=0.4.0-alpha.1 sh scripts/build_release.sh`, target `9f4ebeb` or later.
 
