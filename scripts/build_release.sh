@@ -4,7 +4,7 @@
 # source archive (it is produced from HEAD with git archive).
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-VERSION="${VERSION:-0.4.0-alpha.1}"
+VERSION="${VERSION:-0.5.0-alpha.1}"
 GO=go
 [ -x ./.tools/go/bin/go ] && GO=./.tools/go/bin/go
 OUT="release/v$VERSION"

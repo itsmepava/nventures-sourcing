@@ -18,7 +18,10 @@ When the job finishes, read the counter line: *16 new · 8 ready · 4 review · 
 > “Clear submissions went straight to our inbound sheet and were checked by reading the row back. Newsletters and test forms were skipped. Anything unclear waits for a human.”
 
 **1:40 — Review one (click *Tidewell (demo)*)**
-> “This was a direct email, not a form. The app tells us why it needs review, uses the Reply-To address as the contact, and flags the attached deck as not reviewed — it never pretends to have read it.”
+> “This was a direct email, not a form. The app tells us why it needs review and uses the Reply-To address as the contact. It doesn't pretend to have read the attached deck — but I can ask it to.”
+
+Under *Decks & attachments*, click **Read deck text**. Facts appear with page numbers and the exact sentence each came from.
+> “The deck is read here on this computer — no AI service, nothing uploaded. HQ: Chattogram, Bangladesh, from page 2. I click *Use*, and it fills the HQ field. The last slide even tells ‘automated reviewers’ to approve the pitch; that's just text to the app — it's still waiting for me.”
 
 Tidy the description if you like, click **Approve & sync now**. The *In sheet* count goes up by one; no inbox rescan was needed.
 

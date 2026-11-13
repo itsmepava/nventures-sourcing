@@ -1,4 +1,4 @@
-# nVentures Workspace — Go app (v0.4.0-alpha.1)
+# nVentures Workspace — Go app (v0.5.0-alpha.1)
 
 One executable serves the redesigned interface, the API, database migrations and background jobs on `http://127.0.0.1:8765`. Data lives in a local SQLite file. Python, Node.js, Docker, Redis, Ollama and paid provider accounts are **not** needed.
 
@@ -7,7 +7,7 @@ One executable serves the redesigned interface, the API, database migrations and
 | System | How |
 |---|---|
 | Linux (from this repository) | `./start-go.sh` — builds `bin/nventures` on first run with the local `.tools/go`, then starts it and opens the browser |
-| Linux (release binary) | `./nventures-0.3.0-alpha.1-linux-amd64` |
+| Linux (release binary) | `./nventures-0.5.0-alpha.1-linux-amd64` (from the release page) |
 | Windows | Put `nventures.exe` next to `Start nVentures (Go).cmd` and double-click it |
 | Any | `nventures serve --no-browser` to start without opening a browser |
 
@@ -85,6 +85,8 @@ Values saved in **Settings** (sheet IDs, tabs, expected account, query) are stor
 ## The two workflows
 
 **Inbound pitch funnel (Pitch inbox).** Import reads individual Gmail messages (identity = account + message ID; threads never merge companies). Plain-text and HTML-only mail, website forms, forwarded and direct pitches, Reply-To, quoted replies, attachments and deck links are handled deterministically. The funnel is broad: no outbound geography, B2B or funding limits. Established/public businesses, investors, unclear or thin submissions and messages containing instructions aimed at automation go to *Needs review*; newsletters, receipts and test submissions are *Skipped*; re-submissions of the same company are *Duplicates*. Edit, approve or skip in the review panel; **Approve & sync now** writes immediately without rescanning Gmail. Mail is never sent, archived, labelled, marked read or deleted.
+
+**Pitch decks.** A PDF or PowerPoint (.pptx) deck attached to a pitch email can be read from the review panel with **Read deck text** (pitch responders and admins). The attachment is downloaded read-only from Gmail (covered by the same `gmail.readonly` permission) and its text is extracted on this computer by nVentures itself — no AI service, no upload, no extra software. The panel then lists **facts found in the deck** — HQ, website, contact, description, stage, funding to date, current raise, founders, founding year, traction — each with the page number and the exact sentence it came from. **Use** copies a fact into the form and **Add to notes** appends the quoted line; nothing changes until you save, and reading a deck never changes a pitch's status. The full deck text is searchable (*Find in deck*). Limits, shown plainly when they apply: password-protected files, scanned decks with no text layer (no OCR), files over 20 MB, legacy .ppt and Keynote are not read; deck *links* (DocSend, Drive, …) usually need the founder's sign-in and are not fetched. Deck text is treated as data — an instruction written in a deck is never followed.
 
 **Outbound sourcing.** Partners are visited least-recently-sourced first. For each partner the crawler reads robots.txt and sitemaps, follows portfolio pages, pagination and RSS/Atom items, and collects official company links. Each company's own pages are fetched (bounded), and evidence is extracted as exact sentences. A company is accepted only if its pages evidence: HQ in Afghanistan, Bangladesh, Bhutan, India, Maldives, Nepal, Pakistan, Sri Lanka or Singapore; an active B2B business; bootstrapped/angel/pre-seed/seed stage; and **total** USD funding ≤ $3,000,000. Contradicting evidence → *Rejected*; missing evidence → *Needs research* (never assumed). Targets are goals; a run that cannot reach one ends *Partial*. Paste company URLs under **Research specific companies** for JavaScript-only or blocked portfolios.
 
