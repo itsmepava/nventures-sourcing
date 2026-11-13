@@ -114,11 +114,27 @@ func (r *run) importPartners(conn *Conn) {
 		}
 		st := append(state[google.Norm(name)], "", "", "", "")
 		runs, _ := strconv.Atoi(st[2])
-		if err := r.env.Store.MergePartner(r.ctx, name, cell(row, "website"), !strings.EqualFold(cell(row, "nventures relevance"), "no"), st[1], runs); err == nil {
+		if err := r.env.Store.MergePartner(r.ctx, name, PartnerSite(func(k string) string { return cell(row, k) }), !strings.EqualFold(cell(row, "nventures relevance"), "no"), st[1], runs); err == nil {
 			n++
 		}
 	}
 	r.counters["partners_imported"] = n
+}
+
+// partnerSiteHeaders are the partner-list columns that may hold where to
+// start crawling, in order of preference. A portfolio page is the best start.
+var partnerSiteHeaders = []string{"company portfolio", "portfolio", "portfolio url", "portfolio link", "website", "company website", "url"}
+
+// PartnerSite returns the first partner-list cell that looks like a web
+// address (a single token with a dot), or "" when none does.
+func PartnerSite(cell func(header string) string) string {
+	for _, h := range partnerSiteHeaders {
+		v := strings.TrimSpace(cell(h))
+		if v != "" && !strings.ContainsAny(v, " \t\n") && strings.Contains(v, ".") {
+			return v
+		}
+	}
+	return ""
 }
 
 func (r *run) updateControl(sheet *outboundSheet, p store.Partner) {

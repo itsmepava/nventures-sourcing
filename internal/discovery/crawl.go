@@ -138,6 +138,11 @@ func (c *Crawler) DiscoverPartner(ctx context.Context, partner, website string) 
 	queue := []string{home.String()}
 	seen := map[string]bool{}
 	portfolioPages := map[string]bool{}
+	if p := strings.Trim(home.Path, "/"); p != "" {
+		// A configured deep link (e.g. a partner's portfolio page) is itself
+		// the company list, whatever its path is called.
+		portfolioPages[home.String()] = true
+	}
 	for _, sm := range c.F.Sitemaps(ctx, home) {
 		r := c.F.Fetch(ctx, sm)
 		rep.Sources = append(rep.Sources, SourceNote{sm, r.Status, r.Note})

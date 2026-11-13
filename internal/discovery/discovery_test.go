@@ -221,3 +221,22 @@ func TestSizeMIMEAndCancellation(t *testing.T) {
 		t.Errorf("cancel: %s %s", r.Status, time.Since(start))
 	}
 }
+
+// A partner list may give the portfolio page itself (a "Company Portfolio"
+// column) rather than the home page; that page is the company list even when
+// its path doesn't look like one.
+func TestDeepLinkPortfolioSeed(t *testing.T) {
+	c, _, _ := newCrawler(t)
+	rep := c.DiscoverPartner(context.Background(), "Lanka Seed Circle (demo)", "https://lankaseed"+fixtures.DemoSuffix+"/our-picks")
+	got := map[string]bool{}
+	for _, cand := range rep.Candidates {
+		if strings.HasSuffix(cand.FoundOn, "/our-picks") {
+			got[strings.TrimSuffix(strings.TrimPrefix(cand.URL, "https://"), fixtures.DemoSuffix+"/")] = true
+		}
+	}
+	// The deep link's own companies are found on it (the sitemap's main
+	// portfolio is still visited too, for coverage).
+	if !got["ledgerleaf"] || !got["factorysignal"] {
+		t.Fatalf("candidates from deep link: %+v warnings %v", rep.Candidates, rep.Warnings)
+	}
+}

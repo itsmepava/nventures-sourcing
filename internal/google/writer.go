@@ -100,10 +100,23 @@ func OutboundRow(headers []string, record json.RawMessage, partner string) []str
 	if s, _ := values["last_round"].(string); s == "" || len(s) > 120 {
 		values["last_round"] = values["stage"]
 	}
+	notes := "Sourced via " + partner + ". First-party evidence extracted by nVentures; analyst review required."
+	hasFunding := false
+	for _, h := range headers {
+		if outboundMap[Norm(h)] == "total_funding_usd" {
+			hasFunding = true
+		}
+	}
+	if f, ok := values["total_funding_usd"].(float64); ok && !hasFunding {
+		// The sheet has no funding column: keep the evidenced total visible.
+		notes += " Total funding to date (evidenced): USD " + usd(f) + "."
+	}
 	defaults := map[string]string{"outreach status": "Not Reached Out", "status": "Sourced", "ic recommendation": "Potential Fit",
-		"reason":      "B2B; verified eligible HQ; early stage; total funding <= $3M",
-		"extra notes": "Sourced via " + partner + ". First-party evidence extracted by nVentures; analyst review required.",
-		"updates":     "Sourced via nVentures Sourcing (Go)"}
+		"reason":                   "B2B; verified eligible HQ; early stage; total funding <= $3M",
+		"extra notes":              notes,
+		"updates":                  "Sourced via nVentures Sourcing (Go)",
+		"updates (sourcing sheet)": "Sourced via nVentures Sourcing (Go)",
+		"source":                   "nVentures Sourcing via " + partner}
 	row := make([]string, len(headers))
 	for i, h := range headers {
 		n := Norm(h)
@@ -114,6 +127,15 @@ func OutboundRow(headers []string, record json.RawMessage, partner string) []str
 		}
 	}
 	return row
+}
+
+// usd formats a whole-dollar amount with thousands separators.
+func usd(f float64) string {
+	s := strconv.FormatInt(int64(math.Round(f)), 10)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 func pad(r []string, n int) []string {

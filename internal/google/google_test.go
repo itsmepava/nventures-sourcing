@@ -119,3 +119,43 @@ func TestNoGmailWritePaths(t *testing.T) {
 		}
 	}
 }
+
+// The team's live sourcing tab (header row as provided, 13 Nov 2026): no
+// Total Funding USD column, "Founder Name " with a trailing space, analyst
+// assessment columns, and "source" / "Updates (sourcing sheet)".
+var teamSourcingHeaders = strings.Split("Outreach status\tRelevance Flag\tCompany Name\tCountry\tSector\tBusiness Model\tStage\tFounded year\tHeadquarters\tWebsite\tCompany LinkedIn\tCompany Description\tProduct Descriptoon\tTarget Market\tTeam Size\tNumber of Customers\tNotable Customers\tRevenue Generated\tUnique Value Propsotions\tCompetitors\tVision\tFounder Name \tFounder LinkedIn\tFounder Emails\tDomain Knowledge\tTrack Record\tTechnical Knowledge\tSales Skills\tPre-money Evaluation\tAmount to be Raised\tLast Round\tNotable Investors\tIC Recommendation\tReason\tStatus\tExtra Notes\tsource\tUpdates (sourcing sheet)", "\t")
+
+func TestOutboundRowForTeamSheet(t *testing.T) {
+	if len(teamSourcingHeaders) != 38 {
+		t.Fatalf("%d headers", len(teamSourcingHeaders))
+	}
+	rec, _ := json.Marshal(map[string]any{"name": "Acme", "hq_country": "Sri Lanka", "headquarters": "Colombo, Sri Lanka", "website": "https://acme.example", "founders": "A. Founder", "stage": "seed", "total_funding_usd": 1250000.0, "last_round": "Seed, 2025"})
+	row := OutboundRow(teamSourcingHeaders, rec, "Partner X")
+	col := map[string]string{}
+	for i, h := range teamSourcingHeaders {
+		col[h] = row[i]
+	}
+	want := map[string]string{"Outreach status": "Not Reached Out", "Company Name": "Acme", "Country": "Sri Lanka", "Business Model": "B2B", "Stage": "seed", "Headquarters": "Colombo, Sri Lanka",
+		"Website": "https://acme.example", "Founder Name ": "A. Founder", "Last Round": "Seed, 2025", "Status": "Sourced", "IC Recommendation": "Potential Fit",
+		"source": "nVentures Sourcing via Partner X", "Updates (sourcing sheet)": "Sourced via nVentures Sourcing (Go)"}
+	for h, v := range want {
+		if col[h] != v {
+			t.Errorf("%q = %q, want %q", h, col[h], v)
+		}
+	}
+	// Nothing is invented for analyst judgements, valuation, raise or contacts.
+	for _, h := range []string{"Relevance Flag", "Founder Emails", "Domain Knowledge", "Track Record", "Technical Knowledge", "Sales Skills", "Pre-money Evaluation", "Amount to be Raised"} {
+		if col[h] != "" {
+			t.Errorf("%q should stay blank, got %q", h, col[h])
+		}
+	}
+	// No funding column: the evidenced total goes into Extra Notes.
+	if !strings.Contains(col["Extra Notes"], "Total funding to date (evidenced): USD 1,250,000.") {
+		t.Errorf("extra notes: %q", col["Extra Notes"])
+	}
+	// With a funding column it is not repeated in the notes.
+	row2 := OutboundRow(append([]string{"Total Funding USD"}, teamSourcingHeaders...), rec, "Partner X")
+	if row2[0] != "1250000" || strings.Contains(row2[36], "Total funding") {
+		t.Errorf("funding column: %q / %q", row2[0], row2[36])
+	}
+}

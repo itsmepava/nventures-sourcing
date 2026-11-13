@@ -445,3 +445,22 @@ func TestRateLimitedSheetReadIsRetried(t *testing.T) {
 		t.Fatalf("%s %s", j.Status, j.Message)
 	}
 }
+
+func TestPartnerSiteColumns(t *testing.T) {
+	row := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	cases := []struct {
+		cells map[string]string
+		want  string
+	}{
+		{map[string]string{"company portfolio": "https://fund.example/portfolio", "website": "https://fund.example"}, "https://fund.example/portfolio"},
+		{map[string]string{"company portfolio": "", "website": "fund.example"}, "fund.example"},
+		{map[string]string{"company portfolio": "see deck", "website": ""}, ""},
+		{map[string]string{"company portfolio": "Yes"}, ""},
+		{map[string]string{}, ""},
+	}
+	for _, c := range cases {
+		if got := jobs.PartnerSite(row(c.cells)); got != c.want {
+			t.Errorf("%v: got %q want %q", c.cells, got, c.want)
+		}
+	}
+}

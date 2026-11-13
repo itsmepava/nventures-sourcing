@@ -37,9 +37,10 @@ Windows instead: download `nventures-0.5.0-alpha.1-windows-amd64.exe` from the r
 
    Leave everything else as it is. The app only appends new rows, leaves **Status** blank and never changes existing cells.
 8. **Outbound sheet** (sourced companies). Your existing legacy 38-column sheet works as-is. At minimum, its sourcing tab needs a `Company Name` header in row 1. Other recognised headers, including the old typos `Product Descriptoon` and `Unique Value Propsotions`, are filled in automatically, and unknown headers are left blank.
+   Columns the app fills for a new row: the company facts it evidenced, `Business Model` (B2B), `Outreach status` (Not Reached Out), `Status` (Sourced), `IC Recommendation` (Potential Fit), `Reason`, `Extra Notes`, `source` and `Updates`/`Updates (sourcing sheet)`. Analyst columns (`Relevance Flag`, `Domain Knowledge`, `Track Record`, `Technical Knowledge`, `Sales Skills`), `Founder Emails`, `Pre-money Evaluation` and `Amount to be Raised` are left blank: nothing is invented. If the tab has no `Total Funding USD` column, the evidenced total is written into `Extra Notes`.
 9. In the same outbound sheet, check these two tabs:
-   - **Partner list tab** (default name `Partner List`): row 1 has `Company Name` (the partner fund's name) and `Website`. An optional `nVentures Relevance` column set to `No` excludes a partner.
-   - **Partner control tab** (default name `Sourcing Control`): row 1 is exactly `Partner Name` · `Last Sourced UTC` · `Run Count` · `Last Run Added`. Rows below can be empty; the app fills them.
+   - **Partner list tab** (default name `Partner List`): row 1 has `Company Name` (the partner fund's name) plus where to start crawling: `Company Portfolio` (a link to the fund's portfolio page, preferred) or `Website`. A cell that isn't a web address (e.g. "Yes") is ignored. An optional `nVentures Relevance` column set to `No` excludes a partner. Other columns are ignored.
+   - **Partner control tab** (default name `Sourcing Control`, optional): row 1 is exactly `Partner Name` · `Last Sourced UTC` · `Run Count` · `Last Run Added`. Rows below can be empty; the app fills them. Without this tab, partner rotation is still kept inside the app; the tab just makes it visible in the sheet.
 10. Write down, for later:
     - the **inbound sheet ID** and the **outbound sheet ID**: the long code in each sheet's URL between `/d/` and `/edit`;
     - the exact **tab names** (inbound tab, outbound sourcing tab, partner list tab, partner control tab);
