@@ -274,3 +274,45 @@ select option { background: var(--surface); color: var(--text); }
 ::selection { background: color-mix(in srgb, var(--blue) 35%, transparent); }
 .sheet-table .cell { max-height: 4.6em; overflow: hidden; }
 .sheet-table tr:target .cell { max-height: none; }
+
+/* v0.4 workspace: sign-in, account, notifications, team workflow */
+body.booting .shell { visibility: hidden; }
+.auth-root { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background:
+  radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--blue) 16%, transparent), transparent 60%), var(--bg); }
+.auth-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 28px 28px 22px; display: grid; gap: 14px; outline: none; }
+.auth-card h1 { font-size: 22px; }
+.auth-brand { display: flex; justify-content: center; padding-bottom: 4px; }
+.auth-brand .logo { width: 200px; }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.btn.block { width: 100%; justify-content: center; padding: 10px 14px; }
+.account-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface); border-radius: 20px; padding: 3px 10px 3px 3px; cursor: pointer; color: var(--text); font-weight: 560; }
+.account-btn:hover { border-color: var(--blue); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--blue-strong); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+:root[data-theme="dark"] .avatar { background: var(--blue); color: #08141d; }
+.account-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bell { position: relative; }
+.bell-dot { position: absolute; top: 3px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.notif-dialog, .account-dialog { width: min(460px, 100%); }
+.notif-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.notif-list li { padding: 9px 10px; border-radius: 8px; display: grid; gap: 2px; }
+.notif-list li.unread { background: var(--blue-soft); }
+.notif-list li a { color: var(--text); text-decoration: none; font-weight: 560; }
+.notif-list li.unread a::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); margin-right: 7px; vertical-align: 1px; }
+.notif-list small { color: var(--muted); }
+.notes { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.notes li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); }
+.notes li.hint { border: 0; background: none; padding: 0; }
+.note-head { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); }
+.note-head b { color: var(--text); }
+.notes p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 3px; }
+.workflow .field-row { margin-bottom: 8px; }
+.actor { color: var(--muted); }
+.temp-pw { font-size: 18px; padding: 8px 12px; letter-spacing: .04em; user-select: all; }
+.muted-row td { opacity: .6; }
+.sheet-table tr.target { background: var(--blue-soft); outline: 2px solid var(--blue); outline-offset: -2px; }
+.sheet-table tr.target .cell { max-height: none; }
+.sheet-wrap { max-height: 70vh; }
+.grid.flush { gap: 0; }
+.grid.flush > .form { border-left: 1px solid var(--border); }
+@media (max-width: 860px) { .grid.flush > .form { border-left: 0; border-top: 1px solid var(--border); } }

@@ -136,7 +136,7 @@ func TestInboundImportSyncAndRepeat(t *testing.T) {
 		}
 	}
 	for _, n := range []string{"Kelp Ledger (demo)", "Orbit Pantry (demo)"} {
-		if u := ps[n].SheetURL; !strings.HasPrefix(u, "/demo-sheet/"+fixtures.InboundSheetID+"?tab=Pitches#row-") {
+		if u := ps[n].SheetURL; !strings.HasPrefix(u, "#/demo-sheet?id="+fixtures.InboundSheetID+"&tab=Pitches&row=") {
 			t.Errorf("%s row link %q", n, u)
 		}
 	}
@@ -311,7 +311,7 @@ func TestOutboundRunSyncRotationAndRepeat(t *testing.T) {
 	}
 	comps, _ := h.st.AllCompanies(context.Background(), "")
 	for _, c := range comps {
-		if c.SheetRow == nil || c.SheetURL != fmt.Sprintf("/demo-sheet/%s?tab=Active+Sourcing#row-%d", fixtures.OutboundSheetID, *c.SheetRow) || rows[*c.SheetRow-1][0] != c.Name {
+		if c.SheetRow == nil || c.SheetURL != fmt.Sprintf("#/demo-sheet?id=%s&tab=Active+Sourcing&row=%d", fixtures.OutboundSheetID, *c.SheetRow) || rows[*c.SheetRow-1][0] != c.Name {
 			t.Errorf("%s: link %q does not point at its row", c.Name, c.SheetURL)
 		}
 	}

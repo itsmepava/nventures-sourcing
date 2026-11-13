@@ -29,18 +29,24 @@ type Pitch struct {
 	SheetURL    string          `json:"sheet_url"`
 	Starred     bool            `json:"starred"`
 	DuplicateOf *int64          `json:"duplicate_of"`
+	AssigneeID  *int64          `json:"assignee_id"`
+	Stage       string          `json:"stage"`
+	FollowUpAt  string          `json:"follow_up_at"`
 	JobID       *int64          `json:"job_id"`
 	LegacyRef   string          `json:"legacy_ref,omitempty"`
 }
 
-const pitchCols = `id,message_id,account,thread_id,mode,name,name_key,domain,status,data,created_at,updated_at,received_at,error,sheet_url,starred,duplicate_of,job_id,COALESCE(legacy_ref,'')`
+const pitchCols = `id,message_id,account,thread_id,mode,name,name_key,domain,status,data,created_at,updated_at,received_at,error,sheet_url,starred,duplicate_of,job_id,COALESCE(legacy_ref,''),assignee_id,stage,follow_up_at`
 
 func scanPitch(sc interface{ Scan(...any) error }) (Pitch, error) {
 	var p Pitch
 	var data string
 	var star int
-	var dup, job sql.NullInt64
-	err := sc.Scan(&p.ID, &p.MessageID, &p.Account, &p.ThreadID, &p.Mode, &p.Name, &p.NameKey, &p.Domain, &p.Status, &data, &p.CreatedAt, &p.UpdatedAt, &p.ReceivedAt, &p.Error, &p.SheetURL, &star, &dup, &job, &p.LegacyRef)
+	var dup, job, asg sql.NullInt64
+	err := sc.Scan(&p.ID, &p.MessageID, &p.Account, &p.ThreadID, &p.Mode, &p.Name, &p.NameKey, &p.Domain, &p.Status, &data, &p.CreatedAt, &p.UpdatedAt, &p.ReceivedAt, &p.Error, &p.SheetURL, &star, &dup, &job, &p.LegacyRef, &asg, &p.Stage, &p.FollowUpAt)
+	if asg.Valid {
+		p.AssigneeID = &asg.Int64
+	}
 	p.Data = json.RawMessage(data)
 	p.Starred = star == 1
 	if dup.Valid {
@@ -146,6 +152,7 @@ func (s *Store) Pitches(ctx context.Context, lq ListQuery) ([]Pitch, int, error)
 	if lq.Starred {
 		where = append(where, `starred=1`)
 	}
+	where, args = lq.workflowFilters(where, args)
 	if len(lq.IDs) > 0 {
 		ph := strings.TrimSuffix(strings.Repeat("?,", len(lq.IDs)), ",")
 		where = append(where, `id IN (`+ph+`)`)
@@ -153,7 +160,7 @@ func (s *Store) Pitches(ctx context.Context, lq ListQuery) ([]Pitch, int, error)
 			args = append(args, id)
 		}
 	}
-	order := map[string]string{"name": "lower(name)", "received": "received_at", "status": "status", "created": "id"}[lq.Sort]
+	order := map[string]string{"name": "lower(name)", "received": "received_at", "status": "status", "created": "id", "follow_up": "CASE WHEN follow_up_at='' THEN '9999' ELSE follow_up_at END"}[lq.Sort]
 	if order == "" {
 		order, lq.Desc = "received_at", true
 	}

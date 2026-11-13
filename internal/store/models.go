@@ -141,15 +141,21 @@ type Job struct {
 	FinishedAt      string         `json:"finished_at"`
 	HeartbeatAt     string         `json:"heartbeat_at"`
 	LegacyRef       string         `json:"legacy_ref,omitempty"`
+	CreatedBy       *int64         `json:"created_by"`
+	CreatedByName   string         `json:"created_by_name"`
 }
 
-const jobCols = `id,kind,mode,status,params,counters,progress,message,cancel_requested,started_at,COALESCE(finished_at,''),COALESCE(heartbeat_at,''),COALESCE(legacy_ref,'')`
+const jobCols = `id,kind,mode,status,params,counters,progress,message,cancel_requested,started_at,COALESCE(finished_at,''),COALESCE(heartbeat_at,''),COALESCE(legacy_ref,''),created_by,created_by_name`
 
 func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var p, c string
 	var cancel int
-	err := sc.Scan(&j.ID, &j.Kind, &j.Mode, &j.Status, &p, &c, &j.Progress, &j.Message, &cancel, &j.StartedAt, &j.FinishedAt, &j.HeartbeatAt, &j.LegacyRef)
+	var by sql.NullInt64
+	err := sc.Scan(&j.ID, &j.Kind, &j.Mode, &j.Status, &p, &c, &j.Progress, &j.Message, &cancel, &j.StartedAt, &j.FinishedAt, &j.HeartbeatAt, &j.LegacyRef, &by, &j.CreatedByName)
+	if by.Valid {
+		j.CreatedBy = &by.Int64
+	}
 	_ = json.Unmarshal([]byte(p), &j.Params)
 	_ = json.Unmarshal([]byte(c), &j.Counters)
 	if j.Params == nil {
@@ -165,7 +171,12 @@ func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 // CreateJob inserts a running job.
 func (s *Store) CreateJob(ctx context.Context, kind, mode string, params any) (Job, error) {
 	now := Now()
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO jobs(kind,mode,status,params,counters,message,started_at,heartbeat_at) VALUES(?,?,?,?,?,?,?,?)`, kind, mode, "running", js(params), "{}", "Starting", now, now)
+	a := ActorFrom(ctx)
+	var by any
+	if a.ID > 0 {
+		by = a.ID
+	}
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO jobs(kind,mode,status,params,counters,message,started_at,heartbeat_at,created_by,created_by_name) VALUES(?,?,?,?,?,?,?,?,?,?)`, kind, mode, "running", js(params), "{}", "Starting", now, now, by, a.Name)
 	if err != nil {
 		return Job{}, err
 	}
@@ -263,18 +274,24 @@ type Company struct {
 	SheetURL    string          `json:"sheet_url"`
 	Starred     bool            `json:"starred"`
 	Demo        bool            `json:"demo"`
+	AssigneeID  *int64          `json:"assignee_id"`
+	Stage       string          `json:"stage"`
+	FollowUpAt  string          `json:"follow_up_at"`
 	JobID       *int64          `json:"job_id"`
 	LegacyRef   string          `json:"legacy_ref,omitempty"`
 }
 
-const companyCols = `id,name,name_key,COALESCE(domain,''),COALESCE(linkedin_key,''),data,partner,created_at,updated_at,sync_status,sheet_row,COALESCE(sheet_range,''),COALESCE(sync_error,''),sheet_url,starred,demo,job_id,COALESCE(legacy_ref,'')`
+const companyCols = `id,name,name_key,COALESCE(domain,''),COALESCE(linkedin_key,''),data,partner,created_at,updated_at,sync_status,sheet_row,COALESCE(sheet_range,''),COALESCE(sync_error,''),sheet_url,starred,demo,job_id,COALESCE(legacy_ref,''),assignee_id,stage,follow_up_at`
 
 func scanCompany(sc interface{ Scan(...any) error }) (Company, error) {
 	var c Company
 	var data string
-	var row, job sql.NullInt64
+	var row, job, asg sql.NullInt64
 	var star, demo int
-	err := sc.Scan(&c.ID, &c.Name, &c.NameKey, &c.Domain, &c.LinkedInKey, &data, &c.Partner, &c.CreatedAt, &c.UpdatedAt, &c.SyncStatus, &row, &c.SheetRange, &c.SyncError, &c.SheetURL, &star, &demo, &job, &c.LegacyRef)
+	err := sc.Scan(&c.ID, &c.Name, &c.NameKey, &c.Domain, &c.LinkedInKey, &data, &c.Partner, &c.CreatedAt, &c.UpdatedAt, &c.SyncStatus, &row, &c.SheetRange, &c.SyncError, &c.SheetURL, &star, &demo, &job, &c.LegacyRef, &asg, &c.Stage, &c.FollowUpAt)
+	if asg.Valid {
+		c.AssigneeID = &asg.Int64
+	}
 	c.Data = json.RawMessage(data)
 	if row.Valid {
 		c.SheetRow = &row.Int64
@@ -342,6 +359,8 @@ func (s *Store) CompanyKeys(ctx context.Context) ([][3]string, error) {
 // ListQuery filters/sorts/paginates lists.
 type ListQuery struct {
 	Q, Status, Country, Stage, Sort string
+	Pipeline                        string // workflow stage filter
+	Assignee                        int64  // >0 a user, -1 unassigned
 	Desc, Starred                   bool
 	Page, PerPage                   int
 	IDs                             []int64
@@ -354,6 +373,21 @@ func (lq *ListQuery) norm() {
 	if lq.Page < 1 {
 		lq.Page = 1
 	}
+}
+
+func (lq ListQuery) workflowFilters(where []string, args []any) ([]string, []any) {
+	if lq.Pipeline != "" {
+		where = append(where, `stage=?`)
+		args = append(args, lq.Pipeline)
+	}
+	switch {
+	case lq.Assignee > 0:
+		where = append(where, `assignee_id=?`)
+		args = append(args, lq.Assignee)
+	case lq.Assignee == -1:
+		where = append(where, `assignee_id IS NULL`)
+	}
+	return where, args
 }
 
 func likeEscape(s string) string {
@@ -385,7 +419,8 @@ func (s *Store) Companies(ctx context.Context, lq ListQuery) ([]Company, int, er
 	if lq.Starred {
 		where = append(where, `starred=1`)
 	}
-	order := map[string]string{"name": "lower(name)", "created": "id", "country": "json_extract(data,'$.hq_country')", "funding": "CAST(json_extract(data,'$.total_funding_usd') AS REAL)", "partner": "lower(partner)", "sync": "sync_status"}[lq.Sort]
+	where, args = lq.workflowFilters(where, args)
+	order := map[string]string{"name": "lower(name)", "created": "id", "follow_up": "CASE WHEN follow_up_at='' THEN '9999' ELSE follow_up_at END", "country": "json_extract(data,'$.hq_country')", "funding": "CAST(json_extract(data,'$.total_funding_usd') AS REAL)", "partner": "lower(partner)", "sync": "sync_status"}[lq.Sort]
 	if order == "" {
 		order, lq.Desc = "id", true
 	}

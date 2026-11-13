@@ -28,18 +28,20 @@ import (
 
 // App is the running application.
 type App struct {
-	Cfg      config.Config
-	Version  string
-	Store    *store.Store
-	Jobs     *jobs.Manager
-	Fixture  *fixtures.Server
-	Crawler  *discovery.Crawler
-	Log      *slog.Logger
-	Started  time.Time
-	Port     int // actual listening port
-	owner    string
-	hc       *http.Client
-	stopBeat context.CancelFunc
+	Cfg           config.Config
+	Version       string
+	Store         *store.Store
+	Jobs          *jobs.Manager
+	Fixture       *fixtures.Server
+	Crawler       *discovery.Crawler
+	Log           *slog.Logger
+	Started       time.Time
+	Port          int // actual listening port
+	owner         string
+	hc            *http.Client
+	stopBeat      context.CancelFunc
+	stopSched     chan struct{}
+	schedulerTick time.Duration
 
 	oauthMu sync.Mutex
 	pending map[string]google.PKCE
@@ -127,12 +129,26 @@ func New(cfg config.Config, version string, log *slog.Logger) (*App, error) {
 		a.seedDemo(ctx)
 	}
 	a.Crawler = &discovery.Crawler{F: fetcher, Limits: discovery.DefaultLimits}
-	a.Jobs = jobs.NewManager(jobs.Env{Store: st, Crawler: a.Crawler, Config: a.JobConfig, Connect: a.Connect, Owner: a.owner, Log: log})
+	a.Jobs = jobs.NewManager(jobs.Env{Store: st, Crawler: a.Crawler, Config: a.JobConfig, Connect: a.Connect, Owner: a.owner, Log: log, OnFinish: a.notifyJobFinished})
+	a.schedulerTick = 20 * time.Second
+	a.stopSched = make(chan struct{})
 	return a, nil
+}
+
+// StartScheduler begins running due schedules in the background.
+func (a *App) StartScheduler() {
+	go a.scheduler(a.stopSched)
 }
 
 // Close stops background work and releases the data directory.
 func (a *App) Close() {
+	if a.stopSched != nil {
+		select {
+		case <-a.stopSched:
+		default:
+			close(a.stopSched)
+		}
+	}
 	if a.Jobs != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		a.Jobs.Shutdown(ctx)

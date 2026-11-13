@@ -1,97 +1,246 @@
 package httpapp
 
 import (
-	"crypto/hmac"
+	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/itsmepava/nventures-sourcing/internal/auth"
+	"github.com/itsmepava/nventures-sourcing/internal/store"
 	"github.com/itsmepava/nventures-sourcing/web"
 )
+
+// The backend is a JSON API. The frontend (web/src) is a separate static
+// application that only talks to /api; it is embedded into the binary for
+// one-command use, or served from disk with NV_WEB_DIR during development.
+
+type route struct {
+	pattern string
+	perm    string // "" = public, auth.View = any signed-in user
+	h       http.HandlerFunc
+}
+
+func (a *App) routes() []route {
+	V := auth.View
+	return []route{
+		{"GET /api/health", "", a.health},
+		{"GET /health", "", a.health},
+		{"GET /readyz", "", a.readyz},
+		{"GET /api/auth/state", "", a.authState},
+		{"POST /api/auth/setup", "", a.authSetup},
+		{"POST /api/auth/login", "", a.authLogin},
+		{"POST /api/auth/logout", "", a.authLogout},
+
+		{"GET /api/me", V, a.me},
+		{"POST /api/me/password", V, a.changePassword},
+		{"GET /api/state", V, a.state},
+		{"GET /api/dashboard", V, a.dashboard},
+		{"GET /api/settings", V, a.getSettings},
+		{"POST /api/settings", auth.SettingsManage, a.postSettings},
+		{"POST /api/preferences", V, a.postPreferences},
+
+		{"GET /api/pitches", V, a.listPitches},
+		{"GET /api/pitches/export.csv", V, a.exportPitches},
+		{"GET /api/pitches/{id}", V, a.getPitch},
+		{"POST /api/pitches/{id}", auth.InboxReview, a.reviewPitch},
+		{"POST /api/pitches/{id}/star", auth.Shortlist, a.star("pitches")},
+		{"POST /api/pitches/{id}/workflow", auth.PitchWork, a.setWorkflow("pitches")},
+		{"POST /api/pitches/{id}/suggest", auth.InboxReview, a.suggestPitch},
+		{"POST /api/inbox/import", auth.InboxImport, a.startJob("inbound_import")},
+		{"POST /api/inbox/sync", auth.InboxSync, a.startJob("inbound_sync")},
+
+		{"GET /api/companies", V, a.listCompanies},
+		{"GET /api/companies/export.csv", V, a.exportCompanies},
+		{"GET /api/companies/{id}", V, a.getCompany},
+		{"POST /api/companies/{id}/star", auth.Shortlist, a.star("companies")},
+		{"POST /api/companies/{id}/workflow", auth.CompanyWork, a.setWorkflow("companies")},
+		{"POST /api/sourcing/run", auth.SourcingRun, a.startJob("outbound_run")},
+		{"POST /api/sourcing/sync", auth.SourcingSync, a.startJob("outbound_sync")},
+		{"POST /api/sourcing/research", auth.SourcingRun, a.startJob("outbound_research")},
+		{"GET /api/candidates", V, a.listCandidates},
+		{"GET /api/candidates/{id}", V, a.getCandidate},
+
+		{"GET /api/partners", V, a.listPartners},
+		{"POST /api/partners", auth.PartnersEdit, a.addPartner},
+		{"PATCH /api/partners/{id}", auth.PartnersEdit, a.updatePartner},
+
+		{"GET /api/jobs", V, a.listJobs},
+		{"GET /api/jobs/{id}", V, a.getJob},
+		{"POST /api/jobs/{id}/cancel", auth.JobsControl, a.cancelJob},
+		{"POST /api/jobs/{id}/retry", auth.JobsControl, a.retryJob},
+		{"GET /api/related", V, a.related},
+		{"GET /api/events", V, a.listEvents},
+		{"GET /api/sync-ops", V, a.listSyncOps},
+
+		{"GET /api/notes", V, a.listNotes},
+		{"POST /api/notes", V, a.addNote}, // entity-specific permission checked inside
+		{"GET /api/queue", V, a.queue},
+		{"GET /api/notifications", V, a.listNotifications},
+		{"POST /api/notifications/read", V, a.readNotifications},
+		{"GET /api/team", V, a.teamBrief},
+		{"GET /api/users", auth.UsersManage, a.listUsers},
+		{"POST /api/users", auth.UsersManage, a.createUser},
+		{"PATCH /api/users/{id}", auth.UsersManage, a.updateUser},
+		{"POST /api/users/{id}/reset-password", auth.UsersManage, a.resetPassword},
+		{"GET /api/templates", V, a.listTemplates},
+		{"POST /api/templates", auth.TemplatesManage, a.saveTemplate},
+		{"PUT /api/templates/{id}", auth.TemplatesManage, a.saveTemplate},
+		{"DELETE /api/templates/{id}", auth.TemplatesManage, a.deleteTemplate},
+		{"GET /api/schedules", auth.SchedulesManage, a.listSchedules},
+		{"POST /api/schedules", auth.SchedulesManage, a.saveSchedule},
+		{"PUT /api/schedules/{id}", auth.SchedulesManage, a.saveSchedule},
+		{"DELETE /api/schedules/{id}", auth.SchedulesManage, a.deleteSchedule},
+		{"POST /api/schedules/{id}/run", auth.SchedulesManage, a.runScheduleNow},
+
+		{"POST /api/google/client", auth.SettingsManage, a.uploadClient},
+		{"POST /api/google/disconnect", auth.SettingsManage, a.disconnect},
+		{"POST /api/google/test", auth.SettingsManage, a.testConnection},
+		{"GET /oauth/start", auth.SettingsManage, a.oauthStart},
+		{"GET /oauth/callback", auth.SettingsManage, a.oauthCallback},
+		{"GET /api/llm", V, a.llmStatus},
+		{"POST /api/cache/clear", auth.SettingsManage, a.clearCache},
+		{"POST /api/demo/reset", auth.DemoReset, a.demoReset},
+		{"GET /api/demo/sheet", V, a.demoSheet},
+		{"GET /demo-site/{host}/{path...}", V, a.demoSite},
+	}
+}
 
 // Handler builds the HTTP handler with all routes and protections.
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
-	static, _ := fs.Sub(web.FS, "static")
-	files := http.FileServer(http.FS(static))
-	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(files)))
-	mux.HandleFunc("GET /{$}", a.index)
-	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/brand/icon-32.png", http.StatusMovedPermanently)
-	})
-	mux.HandleFunc("GET /health", a.health)
-	mux.HandleFunc("GET /api/health", a.health)
-	mux.HandleFunc("GET /readyz", a.readyz)
-	mux.HandleFunc("GET /login", a.loginPage)
-	mux.HandleFunc("POST /login", a.login)
-
-	mux.HandleFunc("GET /api/state", a.state)
-	mux.HandleFunc("GET /api/dashboard", a.dashboard)
-	mux.HandleFunc("GET /api/settings", a.getSettings)
-	mux.HandleFunc("POST /api/settings", a.postSettings)
-	mux.HandleFunc("POST /api/preferences", a.postPreferences)
-
-	mux.HandleFunc("GET /api/pitches", a.listPitches)
-	mux.HandleFunc("GET /api/pitches/export.csv", a.exportPitches)
-	mux.HandleFunc("GET /api/pitches/{id}", a.getPitch)
-	mux.HandleFunc("POST /api/pitches/{id}", a.reviewPitch)
-	mux.HandleFunc("POST /api/pitches/{id}/star", a.star("pitches"))
-	mux.HandleFunc("POST /api/pitches/{id}/suggest", a.suggestPitch)
-	mux.HandleFunc("POST /api/inbox/import", a.startJob("inbound_import"))
-	mux.HandleFunc("POST /api/inbox/sync", a.startJob("inbound_sync"))
-
-	mux.HandleFunc("GET /api/companies", a.listCompanies)
-	mux.HandleFunc("GET /api/companies/export.csv", a.exportCompanies)
-	mux.HandleFunc("GET /api/companies/{id}", a.getCompany)
-	mux.HandleFunc("POST /api/companies/{id}/star", a.star("companies"))
-	mux.HandleFunc("POST /api/sourcing/run", a.startJob("outbound_run"))
-	mux.HandleFunc("POST /api/sourcing/sync", a.startJob("outbound_sync"))
-	mux.HandleFunc("POST /api/sourcing/research", a.startJob("outbound_research"))
-	mux.HandleFunc("GET /api/candidates", a.listCandidates)
-	mux.HandleFunc("GET /api/candidates/{id}", a.getCandidate)
-
-	mux.HandleFunc("GET /api/partners", a.listPartners)
-	mux.HandleFunc("POST /api/partners", a.addPartner)
-	mux.HandleFunc("PATCH /api/partners/{id}", a.updatePartner)
-
-	mux.HandleFunc("GET /api/jobs", a.listJobs)
-	mux.HandleFunc("GET /api/jobs/{id}", a.getJob)
-	mux.HandleFunc("POST /api/jobs/{id}/cancel", a.cancelJob)
-	mux.HandleFunc("POST /api/jobs/{id}/retry", a.retryJob)
-	mux.HandleFunc("GET /api/related", a.related)
-	mux.HandleFunc("GET /demo-sheet/{id}", a.demoSheet)
-	mux.HandleFunc("GET /api/events", a.listEvents)
-	mux.HandleFunc("GET /api/sync-ops", a.listSyncOps)
-
-	mux.HandleFunc("POST /api/google/client", a.uploadClient)
-	mux.HandleFunc("POST /api/google/disconnect", a.disconnect)
-	mux.HandleFunc("POST /api/google/test", a.testConnection)
-	mux.HandleFunc("GET /oauth/start", a.oauthStart)
-	mux.HandleFunc("GET /oauth/callback", a.oauthCallback)
-	mux.HandleFunc("GET /api/llm", a.llmStatus)
-	mux.HandleFunc("POST /api/cache/clear", a.clearCache)
-	mux.HandleFunc("POST /api/demo/reset", a.demoReset)
-	mux.HandleFunc("GET /demo-site/{host}/{path...}", a.demoSite)
+	for _, rt := range a.routes() {
+		mux.HandleFunc(rt.pattern, a.guard(rt.perm, rt.h))
+	}
+	mux.Handle("GET /", a.frontend())
 	return a.protect(mux)
 }
 
-func cacheStatic(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		h.ServeHTTP(w, r)
+// ---- frontend static files ----
+
+type asset struct {
+	body  []byte
+	ctype string
+	etag  string
+}
+
+// frontend serves the separate web application. Embedded files get content
+// ETags so an upgraded binary never serves stale assets.
+func (a *App) frontend() http.Handler {
+	if dir := os.Getenv("NV_WEB_DIR"); dir != "" {
+		files := http.FileServer(http.Dir(dir))
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache")
+			files.ServeHTTP(w, r)
+		})
+	}
+	src, _ := fs.Sub(web.FS, "src")
+	assets := map[string]asset{}
+	_ = fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		b, err := fs.ReadFile(src, p)
+		if err != nil {
+			return nil
+		}
+		sum := sha256.Sum256(b)
+		ct := mime.TypeByExtension(path.Ext(p))
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		assets["/"+p] = asset{body: b, ctype: ct, etag: `"` + hex.EncodeToString(sum[:8]) + `"`}
+		return nil
 	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		if p == "/" {
+			p = "/index.html"
+		}
+		if p == "/favicon.ico" {
+			p = "/assets/brand/icon-32.png"
+		}
+		f, ok := assets[p]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", f.ctype)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", f.etag)
+		if r.Header.Get("If-None-Match") == f.etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		_, _ = w.Write(f.body)
+	})
+}
+
+// ---- sessions and permissions ----
+
+const sessionCookie = "nv_sid"
+const sessionTTL = 7 * 24 * time.Hour
+
+type userKey struct{}
+
+func currentUser(r *http.Request) (store.User, bool) {
+	u, ok := r.Context().Value(userKey{}).(store.User)
+	return u, ok
+}
+
+func (a *App) sessionToken(r *http.Request) string {
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+// guard enforces sign-in and the route's permission.
+func (a *App) guard(perm string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if perm == "" {
+			h(w, r)
+			return
+		}
+		tok := a.sessionToken(r)
+		var u store.User
+		var err error = store.ErrNotFound
+		if tok != "" {
+			u, err = a.Store.SessionUser(r.Context(), auth.HashToken(tok), sessionTTL)
+		}
+		if err != nil {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				writeErr(w, 401, "Please sign in")
+			} else {
+				http.Redirect(w, r, "/#/signin", http.StatusSeeOther)
+			}
+			return
+		}
+		if u.MustChangePassword && r.URL.Path != "/api/me" && r.URL.Path != "/api/me/password" && r.URL.Path != "/api/state" {
+			writeErr(w, 403, "Choose a new password before continuing")
+			return
+		}
+		if !auth.Can(u.Role, perm) {
+			writeErr(w, 403, fmt.Sprintf("Your role (%s) can't do this. Ask an admin if you need access.", auth.RoleName(u.Role)))
+			return
+		}
+		ctx := context.WithValue(r.Context(), userKey{}, u)
+		ctx = store.WithActor(ctx, store.Actor{ID: u.ID, Name: u.Name})
+		h(w, r.WithContext(ctx))
+	}
 }
 
 // ---- protections ----
@@ -110,39 +259,19 @@ func (a *App) allowedHost(host string) bool {
 			return true
 		}
 	}
-	if !a.Cfg.Loopback() && a.Cfg.AccessToken != "" && a.Cfg.Host != "0.0.0.0" && a.Cfg.Host != "::" && h == strings.ToLower(a.Cfg.Host) {
-		return true
-	}
 	return false
-}
-
-func (a *App) sessionValue() string {
-	m := hmac.New(sha256.New, []byte(a.Cfg.AccessToken))
-	m.Write([]byte("nventures-session-v1"))
-	return hex.EncodeToString(m.Sum(nil))
-}
-
-func (a *App) authenticated(r *http.Request) bool {
-	if a.Cfg.AccessToken == "" {
-		return true
-	}
-	if c, err := r.Cookie("nv_session"); err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.sessionValue())) == 1 {
-		return true
-	}
-	auth := r.Header.Get("Authorization")
-	return strings.HasPrefix(auth, "Bearer ") && subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, "Bearer ")), []byte(a.Cfg.AccessToken)) == 1
 }
 
 func (a *App) protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		h := w.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		hd := w.Header()
+		hd.Set("X-Content-Type-Options", "nosniff")
+		hd.Set("Referrer-Policy", "no-referrer")
+		hd.Set("X-Frame-Options", "DENY")
+		hd.Set("Cross-Origin-Opener-Policy", "same-origin")
 		if !strings.HasPrefix(r.URL.Path, "/demo-site/") {
-			h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+			hd.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		}
 		defer func() {
 			if p := recover(); p != nil {
@@ -156,8 +285,8 @@ func (a *App) protect(next http.Handler) http.Handler {
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			// Cross-site request protection: same-origin only plus a custom header
-			// that a cross-origin form cannot send without a CORS preflight.
+			// Cross-site request protection: same origin plus a custom header a
+			// cross-origin form cannot send without a CORS preflight.
 			if o := r.Header.Get("Origin"); o != "" {
 				u, err := url.Parse(o)
 				if err != nil || !a.allowedHost(u.Host) || !strings.EqualFold(u.Host, r.Host) {
@@ -165,23 +294,15 @@ func (a *App) protect(next http.Handler) http.Handler {
 					return
 				}
 			}
-			if r.URL.Path != "/login" && r.Header.Get("X-NV-Request") != "1" {
+			if r.Header.Get("X-NV-Request") != "1" {
 				http.Error(w, "Missing request header", http.StatusForbidden)
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 		}
-		if !a.authenticated(r) && r.URL.Path != "/login" && r.URL.Path != "/health" && !strings.HasPrefix(r.URL.Path, "/static/") {
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				writeErr(w, 401, "Sign in required")
-			} else {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
-			}
-			return
-		}
 		sw := &statusWriter{ResponseWriter: w, code: 200}
 		next.ServeHTTP(sw, r)
-		if !strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Path != "/api/jobs" && !strings.HasPrefix(r.URL.Path, "/api/jobs/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/api/jobs") && r.URL.Path != "/api/notifications" {
 			a.Log.Info("http", "method", r.Method, "path", r.URL.Path, "status", sw.code, "ms", time.Since(start).Milliseconds())
 		}
 	})
@@ -227,16 +348,6 @@ func qInt(r *http.Request, key string, def int) int {
 	return def
 }
 
-// ---- pages ----
-
-var indexTmpl = template.Must(template.ParseFS(web.FS, "templates/index.html"))
-
-func (a *App) index(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = indexTmpl.Execute(w, map[string]string{"Version": a.Version, "Mode": a.Cfg.Mode})
-}
-
 func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"status": "ok", "app": "nventures", "version": a.Version, "mode": a.Cfg.Mode, "uptime_seconds": int(time.Since(a.Started).Seconds())})
 }
@@ -247,24 +358,4 @@ func (a *App) readyz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"status": "ready", "schema": a.Store.SchemaVersion(r.Context())})
-}
-
-func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>nVentures sign in</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"></head><body class="login"><main class="login-card"><img class="logo logo-light" src="/static/brand/logo.png" alt="nVentures" width="200"><img class="logo logo-dark" src="/static/brand/logo-dark.png" alt="" aria-hidden="true" width="200"><h1>Sign in</h1><form method="post" action="/login"><label>Access token<input name="token" type="password" autocomplete="current-password" required></label><button class="btn primary" type="submit">Sign in</button></form></main></body></html>`)
-}
-
-func (a *App) login(w http.ResponseWriter, r *http.Request) {
-	if a.Cfg.AccessToken == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	_ = r.ParseForm()
-	if subtle.ConstantTimeCompare([]byte(r.PostForm.Get("token")), []byte(a.Cfg.AccessToken)) != 1 {
-		time.Sleep(500 * time.Millisecond)
-		http.Redirect(w, r, "/login?failed=1", http.StatusSeeOther)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{Name: "nv_session", Value: a.sessionValue(), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: strings.HasPrefix(a.Cfg.BaseURL, "https://"), MaxAge: 12 * 3600})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

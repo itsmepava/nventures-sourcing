@@ -90,7 +90,7 @@ func (s *Store) RelatedTo(ctx context.Context, nameKey, domain string, excludeCo
 }
 
 func (s *Store) eventsWhere(ctx context.Context, where string, args ...any) ([]Event, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, job_id, created_at, kind, message, detail FROM events WHERE `+where+` ORDER BY id DESC LIMIT 100`, args...)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, job_id, created_at, kind, message, detail, actor FROM events WHERE `+where+` ORDER BY id DESC LIMIT 100`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (s *Store) eventsWhere(ctx context.Context, where string, args ...any) ([]E
 		var e Event
 		var jid *int64
 		var d string
-		if err := rows.Scan(&e.ID, &jid, &e.CreatedAt, &e.Kind, &e.Message, &d); err != nil {
+		if err := rows.Scan(&e.ID, &jid, &e.CreatedAt, &e.Kind, &e.Message, &d, &e.Actor); err != nil {
 			return nil, err
 		}
 		e.JobID, e.Detail = jid, []byte(d)

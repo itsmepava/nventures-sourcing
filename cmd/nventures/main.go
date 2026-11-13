@@ -139,6 +139,7 @@ func serve(args []string) error {
 		return err
 	}
 	app.Port = ln.Addr().(*net.TCPAddr).Port
+	app.StartScheduler()
 	srv := &http.Server{Handler: app.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 120 * time.Second, IdleTimeout: 120 * time.Second}
 	url := fmt.Sprintf("http://127.0.0.1:%d/", app.Port)
 	if !cfg.Loopback() {

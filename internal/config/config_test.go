@@ -46,13 +46,13 @@ func TestLoadLegacyNamesAndBindSafety(t *testing.T) {
 	}
 	t.Setenv("NV_HOST", "0.0.0.0")
 	if _, err := Load(f); err == nil {
-		t.Error("public bind without token accepted")
+		t.Error("public bind without explicit opt-in accepted")
 	}
-	t.Setenv("NV_ACCESS_TOKEN", "short")
+	t.Setenv("NV_ALLOW_REMOTE", "1")
 	if _, err := Load(f); err == nil {
-		t.Error("short token accepted")
+		t.Error("public bind without base URL accepted")
 	}
-	t.Setenv("NV_ACCESS_TOKEN", "0123456789abcdef0123456789")
+	t.Setenv("NV_BASE_URL", "https://sourcing.example")
 	if _, err := Load(f); err != nil {
 		t.Error(err)
 	}

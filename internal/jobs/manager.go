@@ -47,6 +47,8 @@ type Env struct {
 	Connect func(ctx context.Context) (*Conn, error)
 	Owner   string
 	Log     *slog.Logger
+	// OnFinish, if set, is called after a job reaches a terminal state.
+	OnFinish func(ctx context.Context, job store.Job)
 }
 
 // Kinds and the lease each one holds. One lease per workflow guarantees a
@@ -107,7 +109,8 @@ func (m *Manager) Start(ctx context.Context, kind string, params map[string]any)
 		return store.Job{}, err
 	}
 	_, _ = m.env.Store.AcquireLease(ctx, lease, owner, job.ID, m.TTL)
-	jctx, cancel := context.WithCancel(m.base)
+	// The job keeps the actor who started it so its audit events say who.
+	jctx, cancel := context.WithCancel(store.WithActor(m.base, store.ActorFrom(ctx)))
 	m.mu.Lock()
 	m.cancels[job.ID] = cancel
 	m.mu.Unlock()
@@ -141,6 +144,11 @@ func (m *Manager) Start(ctx context.Context, kind string, params map[string]any)
 		}()
 		r := &run{m: m, env: m.env, job: job, cfg: cfg, ctx: jctx, cancel: cancel, counters: map[string]any{}}
 		r.execute(kind, params)
+		if m.env.OnFinish != nil {
+			if final, err := m.env.Store.Job(context.Background(), job.ID); err == nil {
+				m.env.OnFinish(store.WithActor(context.Background(), store.ActorFrom(jctx)), final)
+			}
+		}
 	}()
 	return job, nil
 }

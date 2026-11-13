@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"time"
 
+	"github.com/itsmepava/nventures-sourcing/internal/auth"
 	"github.com/itsmepava/nventures-sourcing/internal/config"
 	"github.com/itsmepava/nventures-sourcing/internal/fixtures"
 )
@@ -47,7 +49,8 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 	go srv.Serve(ln)
 	defer srv.Close()
 	base := fmt.Sprintf("http://127.0.0.1:%d", app.Port)
-	hc := &http.Client{Timeout: 30 * time.Second}
+	jar, _ := cookiejar.New(nil)
+	hc := &http.Client{Timeout: 30 * time.Second, Jar: jar}
 	call := func(method, path string, body any, out any) (int, error) {
 		var buf io.Reader
 		if body != nil {
@@ -103,6 +106,9 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 	code, _ := call("GET", "/health", nil, &health)
 	fail(code == 200 && health["mode"] == "demo", "health check")
 	rep.Steps = append(rep.Steps, "Health OK (demo mode, fixture Gmail/Sheets/websites on loopback)")
+	code, _ = call("POST", "/api/auth/setup", map[string]string{"name": "Rehearsal Admin", "email": "rehearsal@nventures-demo.test", "password": auth.RandomToken(18)}, nil)
+	fail(code == 201, "first-run admin setup")
+	rep.Steps = append(rep.Steps, "First-run setup created the admin account and signed in")
 
 	in := start("/api/inbox/import", map[string]any{"limit": 100, "sync": true})
 	rep.Inbound = in

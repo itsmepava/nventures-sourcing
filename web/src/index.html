@@ -1,33 +1,39 @@
 <!doctype html>
-<html lang="en" data-mode="{{.Mode}}">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f4f6f8">
-<title>nVentures Sourcing</title>
-<link rel="icon" href="/static/brand/icon-32.png" type="image/png">
-<link rel="apple-touch-icon" href="/static/brand/icon-180.png">
-<script src="/static/theme.js?v={{.Version}}"></script>
-<link rel="stylesheet" href="/static/app.css?v={{.Version}}">
-<script type="module" src="/static/app.js?v={{.Version}}"></script>
+<title>nVentures Workspace</title>
+<link rel="icon" href="/assets/brand/icon-32.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/brand/icon-180.png">
+<script src="/assets/theme.js"></script>
+<link rel="stylesheet" href="/assets/app.css">
+<script type="module" src="/js/main.js"></script>
 </head>
-<body>
+<body class="booting">
 <a class="skip" href="#main">Skip to content</a>
-<div class="shell">
+
+<!-- Sign-in, first-run setup and password change render here -->
+<div id="auth-root" class="auth-root" hidden></div>
+
+<div class="shell" id="shell" hidden>
   <aside class="sidebar" id="sidebar" aria-label="Primary">
     <a class="brand" href="#/" aria-label="nVentures home">
-      <img class="logo logo-light" src="/static/brand/logo.png" alt="nVentures" width="160" height="49">
-      <img class="logo logo-dark" src="/static/brand/logo-dark.png" alt="" width="160" height="49" aria-hidden="true">
+      <img class="logo logo-light" src="/assets/brand/logo.png" alt="nVentures" width="160" height="49">
+      <img class="logo logo-dark" src="/assets/brand/logo-dark.png" alt="" width="160" height="49" aria-hidden="true">
     </a>
-    <p class="brand-sub">Sourcing workspace</p>
+    <p class="brand-sub">Workspace</p>
     <nav>
       <a href="#/" data-nav="dashboard"><svg aria-hidden="true"><use href="#i-home"/></svg>Overview</a>
+      <a href="#/queue" data-nav="queue"><svg aria-hidden="true"><use href="#i-check"/></svg>My work<span class="count" id="nav-queue-count" hidden></span></a>
       <a href="#/inbox" data-nav="inbox"><svg aria-hidden="true"><use href="#i-inbox"/></svg>Pitch inbox<span class="count" id="nav-inbox-count" hidden></span></a>
       <a href="#/sourcing" data-nav="sourcing"><svg aria-hidden="true"><use href="#i-radar"/></svg>Sourcing</a>
       <a href="#/companies" data-nav="companies"><svg aria-hidden="true"><use href="#i-building"/></svg>Companies</a>
       <a href="#/partners" data-nav="partners"><svg aria-hidden="true"><use href="#i-users"/></svg>Partners</a>
       <a href="#/activity" data-nav="activity"><svg aria-hidden="true"><use href="#i-clock"/></svg>Activity</a>
+      <a href="#/team" data-nav="team" data-perm="users.manage" hidden><svg aria-hidden="true"><use href="#i-team"/></svg>Team</a>
       <a href="#/settings" data-nav="settings"><svg aria-hidden="true"><use href="#i-gear"/></svg>Settings</a>
     </nav>
     <div class="sidebar-foot">
@@ -35,18 +41,19 @@
         <b>Outbound mandate</b>
         <p>HQ in South Asia or Singapore · B2B · bootstrapped to seed · total funding ≤ $3M, all evidenced.</p>
       </div>
-      <p class="version">v{{.Version}} · localhost</p>
+      <p class="version" id="version">localhost</p>
     </div>
   </aside>
   <div class="main-col">
     <header class="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg aria-hidden="true"><use href="#i-menu"/></svg></button>
       <h1 id="page-title">Overview</h1>
-      <span class="mode-badge" id="mode-badge">{{.Mode}}</span>
+      <span class="mode-badge" id="mode-badge" hidden></span>
       <div class="top-actions">
         <button class="btn ghost" id="palette-btn" aria-keyshortcuts="Control+K"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="hide-sm">Commands</span><kbd class="hide-sm">Ctrl K</kbd></button>
         <button class="btn ghost theme-btn" id="theme-btn" aria-label="Theme: system. Click to change." aria-keyshortcuts="t"><svg aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-label" class="hide-sm">System</span></button>
-        <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" aria-keyshortcuts="?"><svg aria-hidden="true"><use href="#i-key"/></svg></button>
+        <button class="icon-btn bell" id="bell-btn" aria-label="Notifications" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#i-bell"/></svg><span class="bell-dot" id="bell-count" hidden></span></button>
+        <button class="account-btn" id="account-btn" aria-haspopup="dialog" aria-label="Account"><span class="avatar" id="avatar" aria-hidden="true">·</span><span class="hide-sm account-name" id="account-name"></span></button>
       </div>
     </header>
     <div id="offline" class="banner bad-banner" role="alert" hidden><svg aria-hidden="true"><use href="#i-alert"/></svg><span><b>Can't reach the local nVentures app.</b> It may have been stopped. Retrying automatically; saved work is safe.</span><button class="btn sm" id="offline-retry">Retry now</button></div>
@@ -64,10 +71,12 @@
   <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/></symbol>
   <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5l8-3v19M12 9h8v12M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.3-5 6.5-5s5.7 1.5 6.5 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.2 2.2 3.5 5"/></symbol>
+  <symbol id="i-team" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.2"/><circle cx="19" cy="10" r="2.2"/><path d="M7 20c.6-3 2.5-5 5-5s4.4 2 5 5M1.5 19c.3-2 1.6-3.4 3.5-3.6M22.5 19c-.3-2-1.6-3.4-3.5-3.6"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
   <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" class="fill"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
@@ -79,7 +88,9 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
   <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20 11l-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/></symbol>
 </svg>
 </body>
 </html>

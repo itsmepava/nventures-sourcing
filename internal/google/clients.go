@@ -165,7 +165,7 @@ func RowURL(mode, id, tab string, gid int64, hasGID bool, row int64) string {
 		return ""
 	}
 	if mode == "demo" {
-		return fmt.Sprintf("/demo-sheet/%s?tab=%s#row-%d", url.PathEscape(id), url.QueryEscape(tab), row)
+		return fmt.Sprintf("#/demo-sheet?id=%s&tab=%s&row=%d", url.QueryEscape(id), url.QueryEscape(tab), row)
 	}
 	u := "https://docs.google.com/spreadsheets/d/" + url.PathEscape(id) + "/edit"
 	if hasGID {

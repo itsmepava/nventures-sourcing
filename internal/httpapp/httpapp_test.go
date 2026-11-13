@@ -2,16 +2,19 @@ package httpapp
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/itsmepava/nventures-sourcing/internal/auth"
 	"github.com/itsmepava/nventures-sourcing/internal/config"
 )
 
@@ -21,7 +24,7 @@ func newTestApp(t *testing.T, mutate func(*config.Config)) (*App, *httptest.Serv
 	if mutate != nil {
 		mutate(&cfg)
 	}
-	a, err := New(cfg, "test", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	a, err := New(cfg, "test", slog.New(slog.NewTextHandler(testLogOut, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +32,37 @@ func newTestApp(t *testing.T, mutate func(*config.Config)) (*App, *httptest.Serv
 	a.Port = srv.Listener.Addr().(*net.TCPAddr).Port
 	t.Cleanup(func() { srv.Close(); a.Close() })
 	return a, srv
+}
+
+const testAdminEmail, testAdminPassword = "admin@nventures-demo.test", "correct-horse-battery"
+
+func TestMain(m *testing.M) {
+	auth.Iterations = 1000 // keep the suite fast; production uses 600,000
+	os.Exit(m.Run())
+}
+
+// signIn returns a client with a session cookie for the given account.
+func signIn(t *testing.T, srv *httptest.Server, email, password string) *http.Client {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+	r := do(t, c, "POST", srv.URL+"/api/auth/login", map[string]string{"X-NV-Request": "1", "Content-Type": "application/json"}, fmt.Sprintf(`{"email":%q,"password":%q}`, email, password))
+	if r.StatusCode != 200 {
+		t.Fatalf("sign in %s: %d", email, r.StatusCode)
+	}
+	return c
+}
+
+// adminClient completes first-run setup if needed and signs in as admin.
+func adminClient(t *testing.T, srv *httptest.Server) *http.Client {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+	r := do(t, c, "POST", srv.URL+"/api/auth/setup", map[string]string{"X-NV-Request": "1", "Content-Type": "application/json"}, fmt.Sprintf(`{"name":"Test Admin","email":%q,"password":%q}`, testAdminEmail, testAdminPassword))
+	if r.StatusCode == 201 {
+		return c
+	}
+	return signIn(t, srv, testAdminEmail, testAdminPassword)
 }
 
 func do(t *testing.T, c *http.Client, method, url string, hdr map[string]string, body string) *http.Response {
@@ -51,7 +85,7 @@ func do(t *testing.T, c *http.Client, method, url string, hdr map[string]string,
 
 func TestHostOriginAndHeaderProtection(t *testing.T) {
 	_, srv := newTestApp(t, nil)
-	c := srv.Client()
+	c := adminClient(t, srv)
 	ok := map[string]string{"X-NV-Request": "1", "Content-Type": "application/json"}
 	if r := do(t, c, "GET", srv.URL+"/api/state", map[string]string{"Host": "attacker.example"}, ""); r.StatusCode != 403 {
 		t.Errorf("rebinding host allowed: %d", r.StatusCode)
@@ -77,35 +111,15 @@ func TestHostOriginAndHeaderProtection(t *testing.T) {
 	}
 }
 
-func TestAccessTokenRequiredForRemoteBind(t *testing.T) {
-	token := "0123456789abcdef0123456789abcdef"
-	_, srv := newTestApp(t, func(c *config.Config) { c.AccessToken = token })
-	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar}
-	if r := do(t, c, "GET", srv.URL+"/api/state", nil, ""); r.StatusCode != 401 {
-		t.Fatalf("unauthenticated API: %d", r.StatusCode)
-	}
-	if r := do(t, c, "GET", srv.URL+"/health", nil, ""); r.StatusCode != 200 {
-		t.Error("health should stay public for probes")
-	}
-	do(t, c, "POST", srv.URL+"/login", map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, "token=wrong")
-	if r := do(t, c, "GET", srv.URL+"/api/state", nil, ""); r.StatusCode != 401 {
-		t.Error("wrong token accepted")
-	}
-	do(t, c, "POST", srv.URL+"/login", map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, "token="+token)
-	if r := do(t, c, "GET", srv.URL+"/api/state", nil, ""); r.StatusCode != 200 {
-		t.Errorf("session not established: %d", r.StatusCode)
-	}
-}
-
 func TestDemoOAuthConsentFlowWithPKCE(t *testing.T) {
 	a, srv := newTestApp(t, nil)
-	c := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	c := adminClient(t, srv)
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if strings.Contains(req.URL.Host, "127.0.0.1") && strings.HasPrefix(req.URL.Path, "/oauth/callback") {
 			req.URL.Host = strings.TrimPrefix(srv.URL, "http://") // same server
 		}
 		return nil
-	}}
+	}
 	r := do(t, c, "GET", srv.URL+"/oauth/start", nil, "")
 	if !strings.Contains(r.Request.URL.Fragment, "google=connected") {
 		t.Fatalf("consent flow did not complete: %s", r.Request.URL)
@@ -156,7 +170,7 @@ func TestInstanceLockAndInterruptedRecovery(t *testing.T) {
 func TestStateNeverExposesSecrets(t *testing.T) {
 	secret := "super-secret-client-value-123"
 	_, srv := newTestApp(t, func(c *config.Config) { c.OAuthClientSecret = secret; c.OAuthRefreshToken = "refresh-" + secret })
-	r := do(t, srv.Client(), "GET", srv.URL+"/api/state", nil, "")
+	r := do(t, adminClient(t, srv), "GET", srv.URL+"/api/state", nil, "")
 	b, _ := io.ReadAll(r.Body)
 	if strings.Contains(string(b), secret) {
 		t.Fatal("secret leaked in /api/state")
@@ -179,7 +193,7 @@ func TestDeterministicRehearsal(t *testing.T) {
 
 func TestRelatedRecordsAndRetry(t *testing.T) {
 	a, srv := newTestApp(t, nil)
-	c := srv.Client()
+	c := adminClient(t, srv)
 	ok := map[string]string{"X-NV-Request": "1", "Content-Type": "application/json"}
 	start := func(path, body string) map[string]any {
 		var j map[string]any
@@ -231,14 +245,14 @@ func TestRelatedRecordsAndRetry(t *testing.T) {
 	if r := do(t, c, "POST", srv.URL+"/api/jobs/"+strconv.FormatInt(ins[0].ID, 10)+"/retry", ok, ""); r.StatusCode != 400 {
 		t.Errorf("completed job retried: %d", r.StatusCode)
 	}
-	if r := do(t, c, "GET", srv.URL+"/demo-sheet/demo-outbound-sheet?tab=Active+Sourcing", nil, ""); r.StatusCode != 200 {
+	if r := do(t, c, "GET", srv.URL+"/api/demo/sheet?id=demo-outbound-sheet&tab=Active+Sourcing", nil, ""); r.StatusCode != 200 {
 		t.Errorf("demo sheet viewer %d", r.StatusCode)
 	}
 }
 
 func TestConnectionTestPassesAndWritesNothing(t *testing.T) {
 	a, srv := newTestApp(t, nil)
-	r := do(t, srv.Client(), "POST", srv.URL+"/api/google/test", map[string]string{"X-NV-Request": "1"}, "")
+	r := do(t, adminClient(t, srv), "POST", srv.URL+"/api/google/test", map[string]string{"X-NV-Request": "1"}, "")
 	var checks []map[string]string
 	json.NewDecoder(r.Body).Decode(&checks)
 	if len(checks) != 3 {
@@ -253,3 +267,5 @@ func TestConnectionTestPassesAndWritesNothing(t *testing.T) {
 		t.Error("connection test wrote rows")
 	}
 }
+
+var testLogOut io.Writer = io.Discard

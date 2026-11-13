@@ -251,6 +251,7 @@ type Event struct {
 	Kind      string          `json:"kind"`
 	Message   string          `json:"message"`
 	Detail    json.RawMessage `json:"detail"`
+	Actor     string          `json:"actor"`
 }
 
 // Audit appends an event.
@@ -262,12 +263,17 @@ func (s *Store) Audit(ctx context.Context, jobID int64, kind, message string, de
 	if jobID > 0 {
 		jid = jobID
 	}
-	_, _ = s.DB.ExecContext(context.WithoutCancel(ctx), `INSERT INTO events(job_id,created_at,kind,message,detail) VALUES(?,?,?,?,?)`, jid, Now(), kind, message, js(detail))
+	a := ActorFrom(ctx)
+	var uid any
+	if a.ID > 0 {
+		uid = a.ID
+	}
+	_, _ = s.DB.ExecContext(context.WithoutCancel(ctx), `INSERT INTO events(job_id,created_at,kind,message,detail,user_id,actor) VALUES(?,?,?,?,?,?,?)`, jid, Now(), kind, message, js(detail), uid, a.Name)
 }
 
 // Events lists events, newest first.
 func (s *Store) Events(ctx context.Context, jobID int64, kind string, after int64, limit int) ([]Event, error) {
-	q := `SELECT id, job_id, created_at, kind, message, detail FROM events WHERE id>?`
+	q := `SELECT id, job_id, created_at, kind, message, detail, actor FROM events WHERE id>?`
 	args := []any{after}
 	if jobID > 0 {
 		q += ` AND job_id=?`
@@ -293,7 +299,7 @@ func (s *Store) Events(ctx context.Context, jobID int64, kind string, after int6
 		var e Event
 		var jid sql.NullInt64
 		var d string
-		if err := rows.Scan(&e.ID, &jid, &e.CreatedAt, &e.Kind, &e.Message, &d); err != nil {
+		if err := rows.Scan(&e.ID, &jid, &e.CreatedAt, &e.Kind, &e.Message, &d, &e.Actor); err != nil {
 			return nil, err
 		}
 		if jid.Valid {

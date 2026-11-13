@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/itsmepava/nventures-sourcing/internal/auth"
 	"github.com/itsmepava/nventures-sourcing/internal/domain"
 	"github.com/itsmepava/nventures-sourcing/internal/extract"
 	"github.com/itsmepava/nventures-sourcing/internal/fixtures"
@@ -25,8 +25,6 @@ import (
 	"github.com/itsmepava/nventures-sourcing/internal/store"
 )
 
-var demoSheetTmpl = template.Must(template.New("sheet").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }}).Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Demo sheet · {{.Tab}}</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"></head><body><main class="sheet-view"><p class="banner info">Demo fixture sheet <code>{{.ID}}</code> — tab “{{.Tab}}”. In live mode this link opens the row in Google Sheets.</p><div class="table-wrap panel"><table class="sheet-table"><tbody>{{range $i, $r := .Rows}}<tr id="row-{{add $i 1}}"><th scope="row">{{add $i 1}}</th>{{range $r}}<td><div class="cell">{{.}}</div></td>{{end}}</tr>{{end}}</tbody></table></div></main></body></html>`))
-
 func (a *App) state(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	running := map[string]any{}
@@ -35,7 +33,7 @@ func (a *App) state(w http.ResponseWriter, r *http.Request) {
 			running[strings.Split(k, "_")[0]] = id
 		}
 	}
-	writeJSON(w, 200, map[string]any{"readiness": a.Readiness(ctx), "running": running, "pitch_counts": a.Store.PitchCounts(ctx), "preferences": a.Store.Settings(ctx, "pref."), "countries": domain.Countries, "funding_limit": domain.FundingLimitUSD})
+	writeJSON(w, 200, map[string]any{"readiness": a.Readiness(ctx), "running": running, "pitch_counts": a.Store.PitchCounts(ctx), "preferences": a.userPrefs(r), "countries": domain.Countries, "funding_limit": domain.FundingLimitUSD})
 }
 
 func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -175,16 +173,43 @@ func (a *App) postPreferences(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, "Preference too large")
 			return
 		}
-		_ = a.Store.SetSetting(r.Context(), "pref."+k, v)
+		_ = a.Store.SetSetting(r.Context(), a.prefPrefix(r)+k, v)
 	}
-	writeJSON(w, 200, a.Store.Settings(r.Context(), "pref."))
+	writeJSON(w, 200, a.userPrefs(r))
+}
+
+// Preferences are stored per person.
+func (a *App) prefPrefix(r *http.Request) string {
+	u, _ := currentUser(r)
+	return fmt.Sprintf("pref.u%d.", u.ID)
+}
+
+func (a *App) userPrefs(r *http.Request) map[string]string {
+	out := map[string]string{}
+	p := a.prefPrefix(r)
+	for k, v := range a.Store.Settings(r.Context(), p) {
+		out["pref."+strings.TrimPrefix(k, p)] = v
+	}
+	return out
 }
 
 // ---- pitches ----
 
 func listQuery(r *http.Request) store.ListQuery {
 	q := r.URL.Query()
-	return store.ListQuery{Q: strings.TrimSpace(q.Get("q")), Status: q.Get("status"), Country: q.Get("country"), Stage: q.Get("stage"), Sort: q.Get("sort"), Desc: q.Get("desc") == "1", Starred: q.Get("starred") == "1", Page: qInt(r, "page", 1), PerPage: qInt(r, "per_page", 25)}
+	lq := store.ListQuery{Q: strings.TrimSpace(q.Get("q")), Status: q.Get("status"), Country: q.Get("country"), Stage: q.Get("stage"), Pipeline: q.Get("pipeline"), Sort: q.Get("sort"), Desc: q.Get("desc") == "1", Starred: q.Get("starred") == "1", Page: qInt(r, "page", 1), PerPage: qInt(r, "per_page", 25)}
+	switch a := q.Get("assignee"); a {
+	case "":
+	case "me":
+		if u, ok := currentUser(r); ok {
+			lq.Assignee = u.ID
+		}
+	case "none":
+		lq.Assignee = -1
+	default:
+		lq.Assignee = int64(qInt(r, "assignee", 0))
+	}
+	return lq
 }
 
 func (a *App) listPitches(w http.ResponseWriter, r *http.Request) {
@@ -523,10 +548,24 @@ func (a *App) getJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"job": j, "events": ev})
 }
 
+// mayControl checks the person's role may run this job's workflow.
+func mayControl(w http.ResponseWriter, r *http.Request, kind string) bool {
+	u, _ := currentUser(r)
+	if !auth.Can(u.Role, auth.JobPermission(kind)) {
+		writeErr(w, 403, fmt.Sprintf("Your role (%s) can't control this kind of job.", auth.RoleName(u.Role)))
+		return false
+	}
+	return true
+}
+
 func (a *App) cancelJob(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
-	if !ok {
-		writeErr(w, 400, "Bad id")
+	j0, err := a.Store.Job(r.Context(), id)
+	if !ok || err != nil {
+		writeErr(w, 404, "Job not found")
+		return
+	}
+	if !mayControl(w, r, j0.Kind) {
 		return
 	}
 	if err := a.Jobs.Cancel(r.Context(), id); err != nil {
@@ -551,6 +590,9 @@ func (a *App) retryJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Only failed, cancelled, interrupted, partial or error-containing jobs can be retried")
 		return
 	}
+	if !mayControl(w, r, j.Kind) {
+		return
+	}
 	if _, legacy := j.Params["legacy"]; legacy {
 		writeErr(w, 400, "Jobs imported from the Python app cannot be retried; start a new one")
 		return
@@ -560,6 +602,7 @@ func (a *App) retryJob(w http.ResponseWriter, r *http.Request) {
 		params[k] = v
 	}
 	params["retry_of"] = j.ID
+	delete(params, "schedule_id")
 	body, _ := json.Marshal(params)
 	r2 := r.Clone(r.Context())
 	r2.Body = io.NopCloser(strings.NewReader(string(body)))
@@ -578,20 +621,19 @@ func (a *App) related(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, rel)
 }
 
-// demoSheet renders a fixture sheet tab so demo row links can be checked.
+// demoSheet returns a fixture sheet tab so the frontend can show demo row links.
 func (a *App) demoSheet(w http.ResponseWriter, r *http.Request) {
 	if a.Fixture == nil {
-		http.NotFound(w, r)
+		writeErr(w, 404, "Only available in demo mode")
 		return
 	}
-	tab := r.URL.Query().Get("tab")
-	rows := a.Fixture.Rows(r.PathValue("id"), tab)
+	id, tab := r.URL.Query().Get("id"), r.URL.Query().Get("tab")
+	rows := a.Fixture.Rows(id, tab)
 	if rows == nil {
-		http.NotFound(w, r)
+		writeErr(w, 404, "Sheet tab not found")
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = demoSheetTmpl.Execute(w, map[string]any{"ID": r.PathValue("id"), "Tab": tab, "Rows": rows})
+	writeJSON(w, 200, map[string]any{"id": id, "tab": tab, "rows": rows})
 }
 
 func (a *App) listEvents(w http.ResponseWriter, r *http.Request) {
