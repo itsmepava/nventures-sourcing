@@ -11,6 +11,7 @@ One Go executable (JSON API) with the separate web frontend (`web/src`) embedded
 
 Windows: `Start nVentures (Go).cmd` next to `nventures.exe`. Demo mode works without credentials; live mode needs one Google consent step.
 
+- **Step-by-step live setup (Gmail + Sheets):** [docs/SETUP-LIVE.md](docs/SETUP-LIVE.md)
 - Guide and Google setup: [docs/GO-APP.md](docs/GO-APP.md)
 - Migration from the Python app and rollback: [docs/MIGRATION-GO.md](docs/MIGRATION-GO.md)
 - Frontend (separate project): [web/README.md](web/README.md)
