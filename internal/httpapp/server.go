@@ -60,6 +60,7 @@ func (a *App) routes() []route {
 		{"POST /api/pitches/{id}/star", auth.Shortlist, a.star("pitches")},
 		{"POST /api/pitches/{id}/workflow", auth.PitchWork, a.setWorkflow("pitches")},
 		{"POST /api/pitches/{id}/suggest", auth.InboxReview, a.suggestPitch},
+		{"POST /api/pitches/{id}/decks", auth.InboxReview, a.readDeck},
 		{"POST /api/inbox/import", auth.InboxImport, a.startJob("inbound_import")},
 		{"POST /api/inbox/sync", auth.InboxSync, a.startJob("inbound_sync")},
 

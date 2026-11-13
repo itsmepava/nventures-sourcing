@@ -20,7 +20,7 @@ export async function renderInbox(main, params) {
       { label: '', cls: 'tight', render: (p, reload) => starButton('pitches', p, reload) },
       { label: 'Company', sort: 'name', render: (p) => { const d = parse(p.data); return [h('div', { class: 'cell-main' }, p.name, d.name_guessed ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, 'name guessed') : null), h('div', { class: 'cell-sub' }, d.description || '')]; } },
       { label: 'Contact', cls: 'hide-mobile', render: (p) => { const d = parse(p.data); return [h('div', {}, d.contact || '—'), d.contact_source ? h('div', { class: 'cell-sub' }, 'from ' + d.contact_source) : null]; } },
-      { label: 'Signals', cls: 'tight hide-mobile', render: (p) => { const d = parse(p.data); return h('div', { class: 'actions' }, d.structured ? h('span', { class: 'badge' }, 'form') : h('span', { class: 'badge warn' }, 'direct'), (d.attachments || []).length ? h('span', { class: 'badge', title: 'Attachments are not reviewed automatically' }, icon('paperclip'), d.attachments.length) : null, (d.deck_links || []).length ? h('span', { class: 'badge', title: 'Deck links are not reviewed automatically' }, 'deck') : null); } },
+      { label: 'Signals', cls: 'tight hide-mobile', render: (p) => { const d = parse(p.data); return h('div', { class: 'actions' }, d.structured ? h('span', { class: 'badge' }, 'form') : h('span', { class: 'badge warn' }, 'direct'), (d.attachments || []).length ? h('span', { class: 'badge', title: 'Attachments — PDF/PPTX decks can be read from the review panel' }, icon('paperclip'), d.attachments.length) : null, (d.deck_links || []).length ? h('span', { class: 'badge', title: 'Deck links are not reviewed automatically' }, 'deck') : null); } },
       { label: 'Team', cls: 'tight hide-mobile', render: (p) => [h('div', {}, stageName('pitch', p.stage)), h('div', { class: 'cell-sub' }, p.assignee_id ? memberName(p.assignee_id) : 'Unassigned', p.follow_up_at ? ' · ' + p.follow_up_at : '')] },
       { label: 'Received', sort: 'received', cls: 'tight hide-mobile', render: (p) => fmtDate(p.received_at) },
       { label: 'Status', sort: 'status', cls: 'tight', render: (p) => badge(p.status) },
@@ -122,9 +122,7 @@ export async function openPitch(id, after) {
       h('div', {}, h('small', {}, 'Stage / sector'), h('span', {}, [d.stage, d.sector].filter(Boolean).join(' · ') || '—')),
       d.incorporation ? h('div', {}, h('small', {}, 'Incorporated in'), h('span', {}, d.incorporation)) : null),
       d.gmail_url ? h('p', { style: 'margin-top:10px' }, h('a', { href: d.gmail_url, target: '_blank', rel: 'noopener noreferrer' }, icon('ext'), ' Open original email in Gmail')) : h('p', { class: 'hint', style: 'margin-top:10px' }, 'Demo message — no Gmail link.')),
-    (d.deck_links || []).length || (d.attachments || []).length ? h('div', { class: 'section' }, h('h3', {}, 'Decks & attachments (not reviewed)'), h('ul', { class: 'source-list' },
-      (d.deck_links || []).map((u) => h('li', {}, h('span', { class: 'badge warn' }, 'unreviewed'), h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, u))),
-      (d.attachments || []).map((a) => h('li', {}, h('span', { class: 'badge warn' }, 'unreviewed'), `${a.filename} (${a.mime_type}, ${Math.round((a.size || 0) / 1024)} KB) — open the original email to view`)))) : null,
+    deckSection(p, d, data.decks || [], f, locked),
     d.excerpt ? h('details', { class: 'section' }, h('summary', {}, 'Email text (quoted replies removed)'), h('pre', { class: 'excerpt' }, d.excerpt)) : null,
     (data.sync_ops || []).length ? h('details', { class: 'section' }, h('summary', {}, `Sheet write history (${data.sync_ops.length})`), h('ul', { class: 'source-list' }, data.sync_ops.map((o) => h('li', {}, badge(o.status), `${fmtDate(o.updated_at)} ${o.sheet_row ? '· row ' + o.sheet_row : ''} ${o.error || ''}`)))) : null,
     notes,
@@ -137,3 +135,80 @@ export async function openPitch(id, after) {
   dr.panel.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !locked) { e.preventDefault(); save('ready'); } });
 }
 
+
+// ---------- pitch decks ----------
+const DECK_STATUS = {
+  extracted: ['Text read', 'ok'], no_text: ['No text layer', 'warn'], protected: ['Password-protected', 'warn'],
+  too_large: ['Too large', 'warn'], unsupported: ['Not readable', 'warn'], error: ['Damaged / unreadable', 'bad'],
+};
+const FACT_LABEL = { description: 'Description', hq: 'HQ', website: 'Website', contact: 'Contact', stage: 'Stage', total_funding: 'Funding to date', raising: 'Raising', founded: 'Founded', founders: 'Founders', traction: 'Traction' };
+const FACT_FIELD = { description: 'description', hq: 'hq', website: 'website', contact: 'contact' };
+const isDeck = (a) => /\.(pdf|pptx)$/i.test(a.filename || '') || a.mime_type === 'application/pdf' || a.mime_type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+// deckSection lists attachments and deck links. PDF/PPTX attachments can be
+// read on request; the text and facts are shown with page numbers and exact
+// quotes, and the reviewer chooses what to copy into the form. Nothing is
+// applied automatically, and deck text is never treated as instructions.
+function deckSection(p, d, decks, f, locked) {
+  const atts = d.attachments || [], links = d.deck_links || [];
+  if (!atts.length && !links.length) return null;
+  const r = app.state.readiness;
+  const list = h('div', { class: 'deck-list' });
+  const reading = (a) => decks.find((x) => x.filename === a.filename && (x.part_id || '') === (a.part_id || ''));
+  const renderOne = (a) => {
+    const box = h('div', { class: 'deck' });
+    const draw = (rd) => {
+      const kb = Math.max(1, Math.round(((rd && rd.size) || a.size || 0) / 1024));
+      const head = h('div', { class: 'deck-head' }, icon('paperclip'), h('b', {}, a.filename), h('span', { class: 'hint' }, `${kb} KB`),
+        rd ? h('span', { class: 'badge ' + (DECK_STATUS[rd.status] || ['', ''])[1] }, (DECK_STATUS[rd.status] || [rd.status])[0]) : h('span', { class: 'badge warn' }, 'unreviewed'));
+      const kids = [head];
+      if (isDeck(a)) {
+        const btn = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+          try { const res = await api(`/api/pitches/${p.id}/decks`, { method: 'POST', body: { part_id: a.part_id || '', filename: a.filename } }); decks = decks.filter((x) => x.id !== res.id).concat(res); draw(res); toast(res.status === 'extracted' ? 'Deck text read — review the facts below' : (DECK_STATUS[res.status] || [res.status])[0]); }
+          catch (e) { toast(e.message, 'bad'); }
+        } }, rd ? 'Read again' : 'Read deck text');
+        if (!can('inbox.review')) need(btn, 'inbox.review'); else if (!r.google.connected) disabledReason(btn, 'Connect Google in Settings first: the attachment is downloaded read-only from Gmail.');
+        kids.push(h('div', { class: 'actions' }, btn, rd ? h('span', { class: 'hint' }, `${rd.page_count} ${rd.kind === 'pptx' ? 'slides' : 'pages'} · read ${fmtDate(rd.read_at)}${rd.read_by_name ? ' by ' + rd.read_by_name : ''}`) : h('span', { class: 'hint' }, 'Downloads this attachment read-only and extracts its text on this computer.')));
+      } else {
+        kids.push(h('p', { class: 'hint' }, 'Only PDF and PowerPoint (.pptx) decks can be read. Open the original email to view this file.'));
+      }
+      if (rd && rd.note) kids.push(h('p', { class: 'note ' + (rd.status === 'extracted' ? '' : 'warn') }, rd.note));
+      if (rd && rd.status === 'extracted') kids.push(deckFacts(parse(rd.facts), f, locked), deckText(parse(rd.pages), rd));
+      box.replaceChildren(...kids);
+    };
+    draw(reading(a));
+    return box;
+  };
+  atts.forEach((a) => list.append(renderOne(a)));
+  return h('div', { class: 'section' }, h('h3', {}, 'Decks & attachments'),
+    h('p', { class: 'hint' }, 'Deck text is read only when you ask, entirely on this computer (no AI service). Facts are suggestions with their exact source line — check them before using.'),
+    list,
+    links.length ? h('div', { style: 'margin-top:10px' }, h('small', { class: 'hint' }, 'Deck links (DocSend, Drive, …) usually need the founder\'s sign-in, so they are not read:'),
+      h('ul', { class: 'source-list' }, links.map((u) => h('li', {}, h('span', { class: 'badge warn' }, 'unreviewed'), h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, u))))) : null);
+}
+
+function deckFacts(facts, f, locked) {
+  if (!Array.isArray(facts) || !facts.length) return h('p', { class: 'hint' }, 'No company facts were recognised in the deck text. Read the text below.');
+  const rows = facts.map((x) => {
+    const field = FACT_FIELD[x.field];
+    const use = !locked && field ? h('button', { class: 'btn sm', type: 'button', onclick: () => { f[field].value = x.value; f[field].dispatchEvent(new Event('input', { bubbles: true })); toast(`${FACT_LABEL[x.field]} filled from the deck — save to keep it`); } }, f[field].value.trim() ? 'Replace' : 'Use') : null;
+    const note = !locked && !field ? h('button', { class: 'btn sm ghost', type: 'button', onclick: () => { const line = `Deck p.${x.page}: ${x.quote}`; if (!f.notes.value.includes(line)) f.notes.value = (f.notes.value.trim() ? f.notes.value.trim() + '\n' : '') + line; toast('Added to notes — save to keep it'); } }, 'Add to notes') : null;
+    return h('div', { class: 'deck-fact' }, h('div', { class: 'deck-fact-head' }, h('small', {}, FACT_LABEL[x.field] || x.field), h('b', {}, x.value), h('span', { class: 'hint' }, 'p. ' + x.page), use, note),
+      x.quote !== x.value ? h('blockquote', {}, '“' + x.quote + '”') : null);
+  });
+  return h('div', { class: 'deck-facts' }, h('small', { class: 'hint' }, 'Facts found in the deck'), rows);
+}
+
+function deckText(pages, rd) {
+  if (!Array.isArray(pages) || !pages.length) return null;
+  const unit = rd.kind === 'pptx' ? 'Slide' : 'Page';
+  const find = h('input', { type: 'search', placeholder: 'Find in deck…', 'aria-label': 'Find in deck text' });
+  const blocks = pages.map((t, i) => h('div', { class: 'deck-page', dataset: { text: (t || '').toLowerCase() } }, h('small', {}, `${unit} ${i + 1}`), h('pre', { class: 'excerpt' }, t || '(no text on this ' + unit.toLowerCase() + ')')));
+  const count = h('span', { class: 'hint' });
+  find.addEventListener('input', () => {
+    const q = find.value.trim().toLowerCase(); let n = 0;
+    blocks.forEach((b) => { const hit = !q || b.dataset.text.includes(q); b.hidden = !hit; if (hit) n++; });
+    count.textContent = q ? `${n} of ${blocks.length}` : '';
+  });
+  return h('details', { class: 'deck-text' }, h('summary', {}, `Deck text (${pages.length} ${unit.toLowerCase()}s${rd.truncated ? ', shortened' : ''})`), h('div', { class: 'actions' }, find, count), blocks);
+}

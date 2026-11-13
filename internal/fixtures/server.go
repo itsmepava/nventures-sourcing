@@ -295,6 +295,17 @@ func (s *Server) gmail(w http.ResponseWriter, r *http.Request) {
 			out["nextPageToken"] = fmt.Sprintf("p%d", start+size)
 		}
 		writeJSON(w, 200, out)
+	case strings.HasPrefix(p, "messages/") && strings.Contains(p, "/attachments/"):
+		rest := strings.TrimPrefix(p, "messages/")
+		id, att, _ := strings.Cut(rest, "/attachments/")
+		var idx int
+		if _, err := fmt.Sscanf(strings.TrimPrefix(att, "att-"+id+"-"), "%d", &idx); err == nil {
+			if data := AttachmentData(id, idx); data != nil {
+				writeJSON(w, 200, map[string]any{"size": len(data), "data": base64.URLEncoding.EncodeToString(data)})
+				return
+			}
+		}
+		writeJSON(w, 404, map[string]any{"error": map[string]any{"code": 404, "message": "Requested entity was not found."}})
 	case strings.HasPrefix(p, "messages/"):
 		id := strings.TrimPrefix(p, "messages/")
 		for _, m := range s.Mail {

@@ -52,8 +52,11 @@ func (m Mail) Gmail() extract.GmailMessage {
 	if len(m.Attachments) > 0 {
 		root := extract.GmailPart{MimeType: "multipart/mixed", Parts: []extract.GmailPart{body}}
 		for i, a := range m.Attachments {
-			ap := extract.GmailPart{MimeType: a.MimeType, Filename: a.Filename}
+			ap := extract.GmailPart{PartID: fmt.Sprint(i + 1), MimeType: a.MimeType, Filename: a.Filename}
 			ap.Body.AttachmentID, ap.Body.Size = fmt.Sprintf("att-%s-%d", m.ID, i), a.Size
+			if data := AttachmentData(m.ID, i); data != nil {
+				ap.Body.Size = len(data)
+			}
 			root.Parts = append(root.Parts, ap)
 		}
 		body = root
@@ -93,7 +96,8 @@ func Mailbox() []Mail {
 			Plain: "Just following up on our submission. Happy to share more.\n\nOn Mon, 2 Nov 2026 at 09:01, Demo Forms wrote:\n> Company name\n> Kelp Ledger (demo)\n> One line on what you do\n> Accounts-payable automation for small importers.\n"},
 		// Malformed incorporation year and thin description.
 		{ID: "demo-m07", Thread: "demo-t-07", From: formSender, Subject: "New pitch submission", Minutes: 7,
-			Plain: "Company name: Byte Bazaar (demo)\nOne line on what you do: Marketplace.\nYear of incorporation: 20223\nContact email: hello@bytebazaar.nventures-demo.test\n"},
+			Plain:       "Company name: Byte Bazaar (demo)\nOne line on what you do: Marketplace.\nYear of incorporation: 20223\nContact email: hello@bytebazaar.nventures-demo.test\n",
+			Attachments: []extract.Attachment{{Filename: "ByteBazaar-deck-demo.pptx", MimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation"}}},
 		// Established public business: allowed in but flagged for review.
 		{ID: "demo-m08", Thread: "demo-t-08", From: formSender, Subject: "New pitch submission", Minutes: 8,
 			Plain: "Company name: Meridian Holdings (demo)\nOne line on what you do: We are a publicly traded multinational logistics group operating in 40 countries.\nContact email: ir@meridian.nventures-demo.test\n"},

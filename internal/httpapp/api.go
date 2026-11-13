@@ -229,7 +229,8 @@ func (a *App) getPitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ops, _ := a.Store.SyncOps(r.Context(), "pitch", id, 20)
-	writeJSON(w, 200, map[string]any{"pitch": p, "sync_ops": ops})
+	decks, _ := a.Store.Decks(r.Context(), id)
+	writeJSON(w, 200, map[string]any{"pitch": p, "sync_ops": ops, "decks": decks})
 }
 
 var lockedPitch = map[string]bool{"verified": true, "already_exists": true, "demo_verified": true, "syncing": true}
@@ -922,7 +923,7 @@ func (a *App) demoReset(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "Backup before reset failed; nothing was reset")
 		return
 	}
-	for _, t := range []string{"candidates", "sync_ops", "companies", "pitches", "events", "jobs", "partners", "fetch_cache", "mailbox_state"} {
+	for _, t := range []string{"candidates", "sync_ops", "companies", "pitch_decks", "pitches", "events", "jobs", "partners", "fetch_cache", "mailbox_state"} {
 		if _, err := a.Store.DB.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			writeErr(w, 500, "Reset failed")
 			return

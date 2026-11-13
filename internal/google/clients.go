@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -67,6 +68,26 @@ func (g *Gmail) Get(ctx context.Context, id string) (extract.GmailMessage, error
 	var m extract.GmailMessage
 	err := g.get(ctx, "messages/"+url.PathEscape(id)+"?format=full", &m)
 	return m, err
+}
+
+// Attachment downloads one attachment body (users.messages.attachments.get,
+// covered by the gmail.readonly scope). Attachment IDs are not stable
+// between message fetches, so callers fetch the message first.
+func (g *Gmail) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {
+	var out struct {
+		Size int    `json:"size"`
+		Data string `json:"data"`
+	}
+	if err := g.get(ctx, "messages/"+url.PathEscape(messageID)+"/attachments/"+url.PathEscape(attachmentID), &out); err != nil {
+		return nil, err
+	}
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(out.Data, "="))
+	if err != nil {
+		if b, err = base64.URLEncoding.DecodeString(out.Data); err != nil {
+			return nil, &netx.ProviderError{Msg: "Gmail returned an attachment that could not be decoded"}
+		}
+	}
+	return b, nil
 }
 
 // Sheets is a minimal Google Sheets values client.

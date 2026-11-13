@@ -50,6 +50,29 @@ func TestUpgradeFromSchemaOnePreservesData(t *testing.T) {
 	if js, _ := st.Jobs(ctx, "", 5); len(js) != 1 {
 		t.Error("job history lost")
 	}
+	// Schema 4: deck readings attach to existing pitches and go with them.
+	if v := st.SchemaVersion(ctx); v != 4 {
+		t.Fatalf("expected schema 4, got %d", v)
+	}
+	if ds, err := st.Decks(ctx, 1); err != nil || len(ds) != 0 {
+		t.Fatalf("decks on upgraded pitch: %v %v", ds, err)
+	}
+	saved, err := st.SaveDeck(ctx, PitchDeck{PitchID: 1, PartID: "2", Filename: "deck.pdf", Status: "extracted", Pages: []byte(`["Old deck"]`)})
+	if err != nil || saved.ID == 0 {
+		t.Fatal(err)
+	}
+	again, _ := st.SaveDeck(ctx, PitchDeck{PitchID: 1, PartID: "2", Filename: "deck.pdf", Status: "no_text"})
+	if ds, _ := st.Decks(ctx, 1); len(ds) != 1 || ds[0].Status != "no_text" || again.ID != saved.ID {
+		t.Fatalf("re-read must replace: %+v", ds)
+	}
+	if _, err := st.DB.ExecContext(ctx, `DELETE FROM pitches WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pitch_decks`).Scan(&n)
+	if n != 0 {
+		t.Error("deck reading outlived its pitch")
+	}
 	// Re-opening is a no-op.
 	st.Close()
 	st2, err := Open(path)

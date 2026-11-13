@@ -56,6 +56,7 @@ func (m GmailMessage) Header(name string) string {
 
 // Attachment is an attachment indicator; contents are never parsed silently.
 type Attachment struct {
+	PartID   string `json:"part_id,omitempty"`
 	Filename string `json:"filename"`
 	MimeType string `json:"mime_type"`
 	Size     int    `json:"size"`
@@ -70,6 +71,9 @@ func decodeB64(s string) []byte {
 	}
 	return b
 }
+
+// PartBytes returns a part's inline body bytes (base64url-decoded).
+func PartBytes(p GmailPart) []byte { return decodeB64(p.Body.Data) }
 
 func charsetOf(p GmailPart) string {
 	for _, h := range p.Headers {
@@ -103,7 +107,7 @@ func Bodies(p GmailPart) (plain, htmlBody string, atts []Attachment) {
 	walk = func(p GmailPart) {
 		mt := strings.ToLower(p.MimeType)
 		if p.Filename != "" {
-			atts = append(atts, Attachment{Filename: p.Filename, MimeType: p.MimeType, Size: p.Body.Size})
+			atts = append(atts, Attachment{PartID: p.PartID, Filename: p.Filename, MimeType: p.MimeType, Size: p.Body.Size})
 			return
 		}
 		if p.Body.Data != "" {

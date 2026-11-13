@@ -162,6 +162,7 @@ func TestRoleMatrix(t *testing.T) {
 		{"POST", "/api/settings", `{"llm_enabled":false}`, []string{"admin"}},
 		{"POST", "/api/pitches/1", `{"name":"Kelp Ledger (demo)","description":"A long enough description here","contact":"a@b.co","decision":"review"}`, []string{"admin", "responder"}},
 		{"POST", "/api/pitches/1/workflow", `{"stage":"reviewing"}`, []string{"admin", "responder"}},
+		{"POST", "/api/pitches/1/decks", `{"filename":"not-attached.pdf"}`, []string{"admin", "responder"}},
 		{"POST", "/api/pitches/1/star", `{"on":true}`, []string{"admin", "sourcer", "responder"}},
 		{"POST", "/api/notes", `{"entity":"pitch","id":1,"body":"hello"}`, []string{"admin", "responder"}},
 		{"POST", "/api/partners", `{"name":"Matrix Fund %s","website":"https://m.example"}`, []string{"admin", "sourcer"}},

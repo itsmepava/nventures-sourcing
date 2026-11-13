@@ -126,7 +126,31 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 		id := list.Items[0]["id"].(float64)
 		var data map[string]any
 		_ = json.Unmarshal([]byte(mustJSON(list.Items[0]["data"])), &data)
-		code, _ := call("POST", fmt.Sprintf("/api/pitches/%.0f", id), map[string]any{"name": data["name"], "description": "Cold-chain monitoring sensors and software for seafood exporters.", "hq": "", "contact": data["contact"], "website": data["website"], "notes": data["notes"], "decision": "ready"}, nil)
+		// Read the attached PDF deck on request and use its evidenced HQ.
+		hq := ""
+		atts, _ := data["attachments"].([]any)
+		if len(atts) == 1 {
+			att, _ := atts[0].(map[string]any)
+			var rd struct {
+				Status    string `json:"status"`
+				PageCount int    `json:"page_count"`
+				Facts     []struct {
+					Field, Value, Quote string
+					Page                int
+				} `json:"facts"`
+			}
+			code, _ := call("POST", fmt.Sprintf("/api/pitches/%.0f/decks", id), map[string]any{"part_id": att["part_id"], "filename": att["filename"]}, &rd)
+			for _, f := range rd.Facts {
+				if f.Field == "hq" && hq == "" {
+					hq = f.Value
+					rep.Steps = append(rep.Steps, fmt.Sprintf("Deck read on request (%v, %d pages, no AI service): HQ %q quoted from page %d", att["filename"], rd.PageCount, f.Value, f.Page))
+				}
+			}
+			fail(code == 200 && rd.Status == "extracted" && hq == "Chattogram, Bangladesh", fmt.Sprintf("deck reading: %d %s hq=%q", code, rd.Status, hq))
+		} else {
+			fail(false, "Tidewell deck attachment missing")
+		}
+		code, _ := call("POST", fmt.Sprintf("/api/pitches/%.0f", id), map[string]any{"name": data["name"], "description": "Cold-chain monitoring sensors and software for seafood exporters.", "hq": hq, "contact": data["contact"], "website": data["website"], "notes": data["notes"], "decision": "ready"}, nil)
 		fail(code == 200, "approve reviewed pitch")
 		s := start("/api/inbox/sync", map[string]any{"ids": []float64{id}})
 		fail(num(s, "verified") == 1, "selected pitch synced now")
