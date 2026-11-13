@@ -183,7 +183,7 @@ func (a *App) modeGuard(ctx context.Context) error {
 func (a *App) seedDemo(ctx context.Context) {
 	if ps, _ := a.Store.Partners(ctx, false, 0); len(ps) == 0 {
 		for _, p := range fixtures.Partners() {
-			_, _ = a.Store.AddPartner(ctx, p.Name, p.Website, true)
+			_ = a.Store.MergePartner(ctx, p.Name, p.Website, true, "", 0, "") // as if read from the demo partner list
 		}
 	}
 }

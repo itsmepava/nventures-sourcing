@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -390,6 +391,34 @@ func (a *App) getCandidate(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- partners ----
+
+// exportPartnerSites downloads partner websites as CSV for pasting into the
+// partner list's Company Portfolio column. By default it lists only links the
+// sheet doesn't already have (found or entered in nVentures); ?all=1 lists
+// every partner. The sheet itself is never written.
+func (a *App) exportPartnerSites(w http.ResponseWriter, r *http.Request) {
+	ps, err := a.Store.Partners(r.Context(), false, 0)
+	if err != nil {
+		writeErr(w, 500, "Could not list partners")
+		return
+	}
+	all := r.URL.Query().Get("all") == "1"
+	status := map[string]string{"sheet": "Already in the sheet", "manual": "Confirmed", "email": "Found — check before using", "guess": "Found — check before using", "search": "Found — check before using", "": "Set earlier"}
+	how := map[string]string{"sheet": "Partner list", "manual": "Entered or confirmed in nVentures", "email": "Contact email domain", "guess": "Address built from the name", "search": "Web search (Tavily)", "": ""}
+	sort.Slice(ps, func(i, j int) bool { return strings.ToLower(ps[i].Name) < strings.ToLower(ps[j].Name) })
+	var rows [][]string
+	for _, p := range ps {
+		if !all && (p.Website == "" || p.WebsiteSource == "sheet" || p.WebsiteSource == "") {
+			continue
+		}
+		st, src := status[p.WebsiteSource], how[p.WebsiteSource]
+		if p.Website == "" {
+			st, src = "No website", p.WebsiteNote
+		}
+		rows = append(rows, []string{p.Name, p.Website, st, src})
+	}
+	writeCSV(w, "nventures-partner-websites.csv", []string{"Company Name", "Company Portfolio", "Status", "How found"}, rows)
+}
 
 func (a *App) listPartners(w http.ResponseWriter, r *http.Request) {
 	ps, err := a.Store.Partners(r.Context(), false, 0)

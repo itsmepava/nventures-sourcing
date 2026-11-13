@@ -14,7 +14,8 @@ export async function renderPartners(main) {
   const list = h('section', { class: 'panel' });
   async function load() {
     const ps = await api('/api/partners');
-    list.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Rotation order'), h('p', {}, 'Least recently sourced first. Counts and last-visit state persist across restarts and are mirrored to the control tab when syncing.'))),
+    list.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Rotation order'), h('p', {}, 'Least recently sourced first. Counts and last-visit state persist across restarts and are mirrored to the control tab when syncing.')),
+        h('div', { class: 'actions' }, h('a', { class: 'btn ghost', href: '/api/partners/export.csv', download: '', title: 'Websites found or entered in nVentures that your partner list doesn\'t have yet. Paste them into the Company Portfolio column; nVentures never edits the partner list itself.' }, icon('download'), 'Websites for the sheet (CSV)'))),
       ps.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Partner'), h('th', { class: 'hide-mobile' }, 'Website'), h('th', { class: 'tight' }, 'Runs'), h('th', { class: 'tight hide-mobile' }, 'Last added'), h('th', { class: 'tight hide-mobile' }, 'Last visit'), h('th', { class: 'tight' }, 'In rotation'))),
         h('tbody', {}, ps.map((p) => { const rep = parse(p.last_report); return h('tr', { onclick: (e) => { if (!e.target.closest('input,button,a')) openPartner(p, load); } },
           h('td', {}, h('div', { class: 'cell-main' }, p.name), (rep.warnings || []).length ? h('div', { class: 'cell-sub' }, rep.warnings[0]) : null),

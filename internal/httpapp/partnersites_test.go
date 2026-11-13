@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -130,5 +131,44 @@ func TestPartnerSearchSetting(t *testing.T) {
 	body := fmt.Sprint(decode(t, do(t, admin2, "GET", srv2.URL+"/api/settings", nil, "")), decode(t, do(t, admin2, "GET", srv2.URL+"/api/state", nil, "")))
 	if strings.Contains(body, "tvly-test") {
 		t.Fatal("API exposed the Tavily key")
+	}
+}
+
+func TestExportPartnerWebsites(t *testing.T) {
+	a, srv := newTestApp(t, nil)
+	admin := adminClient(t, srv)
+	viewer := addMember(t, srv, admin, "Vic Viewer", "viewer@nventures-demo.test", "viewer")
+	ctx := context.Background()
+	a.Store.MergePartner(ctx, "From Sheet Fund", "https://sheet.example", true, "", 0, "")
+	a.Store.MergePartner(ctx, "Indus Bridge Capital (demo)", "", true, "", 0, "")
+	a.Store.MergePartner(ctx, "=HYPERLINK(\"x\") Fund", "", true, "", 0, "")
+	p := partnerNamed(t, a, "Indus Bridge Capital (demo)")
+	do(t, admin, "POST", fmt.Sprintf("%s/api/partners/%d/find-site", srv.URL, p.ID), jsonHdr(), "")
+	q := partnerNamed(t, a, "=HYPERLINK(\"x\") Fund")
+	do(t, admin, "PATCH", fmt.Sprintf("%s/api/partners/%d", srv.URL, q.ID), jsonHdr(), `{"website":"https://typed.example"}`)
+	read := func(path string) string {
+		r := do(t, viewer, "GET", srv.URL+path, nil, "")
+		if r.StatusCode != 200 || !strings.HasPrefix(r.Header.Get("Content-Type"), "text/csv") {
+			t.Fatalf("%s: %d", path, r.StatusCode)
+		}
+		b := new(strings.Builder)
+		_, _ = io.Copy(b, r.Body)
+		return b.String()
+	}
+	body := read("/api/partners/export.csv")
+	if !strings.HasPrefix(body, "Company Name,Company Portfolio,Status,How found\n") {
+		t.Fatalf("header: %q", body)
+	}
+	if !strings.Contains(body, "Indus Bridge Capital (demo),https://indusbridge"+fixtures.DemoSuffix+"/,Found — check before using,Address built from the name") {
+		t.Errorf("found row missing:\n%s", body)
+	}
+	if !strings.Contains(body, "'=HYPERLINK") || !strings.Contains(body, "https://typed.example,Confirmed") {
+		t.Errorf("confirmed row / formula neutralisation:\n%s", body)
+	}
+	if strings.Contains(body, "sheet.example") || strings.Contains(body, "Karachi Angel Forum") {
+		t.Errorf("default export must list only links the sheet lacks:\n%s", body)
+	}
+	if all := read("/api/partners/export.csv?all=1"); !strings.Contains(all, "sheet.example,Already in the sheet") || !strings.Contains(all, "Karachi Angel Forum (demo),,No website") {
+		t.Errorf("all=1:\n%s", all)
 	}
 }

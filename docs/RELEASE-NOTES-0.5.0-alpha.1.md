@@ -18,6 +18,7 @@ Builds on v0.4.0-alpha.1 (team workspace MVP). The v0.4.0-alpha.1 prerelease was
 - **When the link is blank, nVentures finds the website** before crawling: first the partner contact's work-email domain, then a short list of addresses built from the fund's name. A site is accepted only if the page names the partner and is about investing; parked and for-sale domains are rejected.
 - **Optional Tavily search**, like the old app, for partners the free methods can't find. It is off by default and needs `TAVILY_API_KEY` in `.env`, live mode, and **Settings → Search the web (Tavily) for missing partner websites**. Only the partner's name is sent, and requests are counted in Settings.
 - **Found websites are marked "found — confirm"** on the Partners page, with how they were found, and can be confirmed or corrected. The sheet's partner list is never modified. A failed lookup is retried after 7 days, or on demand with **Find website**.
+- **Websites for the sheet (CSV)** on the Partners page lists the links your partner list lacks, with status and how each was found, ready to paste into `Company Portfolio`. Cells are formula-neutralized.
 - **The team's sourcing tab layout is supported:** `source` and `Updates (sourcing sheet)` are filled; analyst, valuation, raise and founder-email columns stay blank; without a `Total Funding USD` column, the evidenced total goes into `Extra Notes`.
 - Schema 5 adds where each partner website came from (upgrades automatically).
 
