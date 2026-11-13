@@ -1,5 +1,5 @@
 // ---------- inbox ----------
-import { JobWatcher, STAGES, dataTable, disabledReason, draftReply, memberName, notesSection, qs, relatedSection, rowLink, stageName, starButton, startJob, team, workflowSection } from '../components.js';
+import { JobWatcher, STAGES, intakeStatus, dataTable, disabledReason, draftReply, memberName, notesSection, qs, relatedSection, rowLink, stageName, starButton, startJob, team, workflowSection } from '../components.js';
 import { $, STATUS, api, app, badge, can, clearErrors, fieldError, fmtDate, h, icon, loadState, need, openOverlay, parse, prefs, roleReason, toast } from '../core.js';
 
 export async function renderInbox(main, params) {
@@ -18,7 +18,7 @@ export async function renderInbox(main, params) {
     fetchPage: async (st) => { const res = await api('/api/pitches?' + qs(st)); const c = app.state.pitch_counts || {}; res.counts = (k) => k === 'all' ? Object.values(c).reduce((a, b) => a + b, 0) : k === 'attention' ? (c.review || 0) + (c.error || 0) + (c.uncertain || 0) + (c.conflict || 0) : k === 'synced' ? (c.verified || 0) + (c.already_exists || 0) + (c.demo_verified || 0) : c[k] || 0; return res; },
     columns: [
       { label: '', cls: 'tight', render: (p, reload) => starButton('pitches', p, reload) },
-      { label: 'Company', sort: 'name', render: (p) => { const d = parse(p.data); return [h('div', { class: 'cell-main' }, p.name, d.name_guessed ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, 'name guessed') : null), h('div', { class: 'cell-sub' }, d.description || '')]; } },
+      { label: 'Company', sort: 'name', render: (p) => { const d = parse(p.data); return [h('div', { class: 'cell-main' }, p.name || h('span', { class: 'muted' }, 'Name not stated'), d.name_guessed ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, 'name guessed') : null), h('div', { class: 'cell-sub' }, d.description || '')]; } },
       { label: 'Contact', cls: 'hide-mobile', render: (p) => { const d = parse(p.data); return [h('div', {}, d.contact || '—'), d.contact_source ? h('div', { class: 'cell-sub' }, 'from ' + d.contact_source) : null]; } },
       { label: 'Signals', cls: 'tight hide-mobile', render: (p) => { const d = parse(p.data); return h('div', { class: 'actions' }, d.structured ? h('span', { class: 'badge' }, 'form') : h('span', { class: 'badge warn' }, 'direct'), (d.attachments || []).length ? h('span', { class: 'badge', title: 'Attachments — PDF/PPTX decks can be read from the review panel' }, icon('paperclip'), d.attachments.length) : null, (d.deck_links || []).length ? h('span', { class: 'badge', title: 'Deck links are not reviewed automatically' }, 'deck') : null); } },
       { label: 'Team', cls: 'tight hide-mobile', render: (p) => [h('div', {}, stageName('pitch', p.stage)), h('div', { class: 'cell-sub' }, p.assignee_id ? memberName(p.assignee_id) : 'Unassigned', p.follow_up_at ? ' · ' + p.follow_up_at : '')] },
@@ -34,7 +34,7 @@ export async function renderInbox(main, params) {
     emptyText: connected ? 'Import from Gmail to start. Each message is processed once; threads never merge different companies.' : 'Connect Google in Settings, then import.',
   });
   main.replaceChildren(
-    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Inbound pitch funnel'), h('p', {}, 'A broad funnel: any startup can enter. Unclear or established businesses go to review; nothing is written to the sheet until it is approved. Status and manual cells in the sheet are never changed.')),
+    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Pitch inbox'), h('p', {}, 'Complete pitches that fit our focus go to the sheet automatically. Everything else waits here for review.'), intakeStatus()),
       h('div', { class: 'actions' }, importBtn, syncReady, (() => { const a = h('a', { class: 'btn ghost', href: '/api/pitches/export.csv', download: '', title: 'Exports the pitches matching the current search and filters' }, icon('download'), 'CSV'); a.addEventListener('click', () => { a.href = '/api/pitches/export.csv?' + qs(table.state); }); return a; })())),
     jobsMount, table);
   app.keys = table.keys; app.jobsMount = jobsMount; app.reloadPage = () => table.reload();
@@ -131,7 +131,7 @@ export async function openPitch(id, after) {
   const foot = locked ? [h('button', { class: 'btn', onclick: () => dr.close() }, 'Close')] : [
     h('button', { class: 'btn ghost', onclick: () => save('skipped') }, 'Skip'), h('button', { class: 'btn', onclick: () => save('review') }, 'Save, keep in review'),
     h('button', { class: 'btn', onclick: () => save('ready'), title: 'Ctrl+Enter' }, icon('check'), 'Approve'), syncBtn];
-  const dr = openOverlay({ title: d.name || p.name, sub: `Pitch #${p.id} · ${STATUS[p.status]?.[0] || p.status}${locked ? ' · read-only' : ''}`, body, foot, isDirty: dirty });
+  const dr = openOverlay({ title: d.name || p.name || 'Name not stated — from ' + (d.reply_to || d.sender || 'unknown sender'), sub: `Pitch #${p.id} · ${STATUS[p.status]?.[0] || p.status}${locked ? ' · read-only' : ''}`, body, foot, isDirty: dirty });
   dr.panel.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !locked) { e.preventDefault(); save('ready'); } });
 }
 

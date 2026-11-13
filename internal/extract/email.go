@@ -372,7 +372,7 @@ func Extract(in Input) Pitch {
 	p.Sector = firstLine(fields["sector"], 200)
 	p.Incorporation = firstLine(fields["incorporation"], 200)
 	p.IncorpYear = firstLine(fields["incorporation_year"], 50)
-	p.HQ = firstLine(fields["hq"], 300) // only an explicit HQ label; incorporation is never HQ
+	p.HQ = firstLine(fields["hq"], 300) // only an explicit HQ label or sentence; incorporation is never HQ
 	if w := urlRe.FindString(fields["website"]); w != "" {
 		p.Website = w
 	} else if f := strings.TrimSpace(firstLine(fields["website"], 300)); f != "" && strings.Contains(f, ".") && !strings.Contains(f, " ") {
@@ -419,12 +419,6 @@ func Extract(in Input) Pitch {
 			}
 			p.Description = truncate(strings.TrimSpace(desc), 4000)
 		}
-		if p.Name == "" {
-			if m := subjectNameRe.FindStringSubmatch(p.Subject); m != nil {
-				p.Name = strings.TrimSpace(m[1] + m[2])
-				p.NameGuessed = true
-			}
-		}
 		if p.Website == "" {
 			for _, u := range urlRe.FindAllString(body, -1) {
 				u = strings.TrimRight(u, ".,;:")
@@ -435,11 +429,24 @@ func Extract(in Input) Pitch {
 			}
 		}
 	}
-	if p.Name == "" {
-		p.NameGuessed = true
-		p.Name = truncate(firstNonEmpty(strings.TrimSpace(regexp.MustCompile(`(?i)^((re|fwd?|fw)\s*:\s*)+`).ReplaceAllString(p.Subject, "")), "Unstructured pitch"), 200)
-	}
+	// The company name is never guessed (from the subject, sender or domain):
+	// if the email doesn't state it, it stays empty for a reviewer to fill in.
 	p.Excerpt = truncate(strings.TrimSpace(text), 2000)
+	hqQuote := ""
+	if p.HQ == "" {
+		// The sender's own explicit statement ("we're headquartered in
+		// Colombo, Sri Lanka", "based in Dhaka") counts as stating HQ.
+		// Markets, customers and incorporation never do.
+		if m := hqSentenceRe.FindStringSubmatch(p.Description); m != nil {
+			loc := m[2]
+			if i := hqStopRe.FindStringIndex(loc); i != nil {
+				loc = loc[:i[0]]
+			}
+			if loc = strings.Trim(strings.TrimSpace(loc), " ,"); loc != "" {
+				p.HQ, hqQuote = truncate(loc, 120), strings.TrimSpace(m[0])
+			}
+		}
+	}
 
 	// Notes: verbatim extra fields plus explicit provenance caveats.
 	var notes []string
@@ -464,6 +471,8 @@ func Extract(in Input) Pitch {
 	}
 	if p.HQ == "" {
 		notes = append(notes, "HQ unconfirmed; country of incorporation is not HQ.")
+	} else if hqQuote != "" {
+		notes = append(notes, "HQ from the sender's own words: \""+hqQuote+"\"")
 	}
 	notes = append(notes, "Sender-reported details; nothing verified by nVentures.")
 	p.Notes = strings.Join(notes, "\n")
@@ -504,8 +513,8 @@ func classify(p *Pitch, in Input, isReply bool) {
 		}
 		add("Unstructured email: confirm company name, description and contact")
 	}
-	if p.NameGuessed {
-		add("Company name inferred from subject")
+	if strings.TrimSpace(p.Name) == "" {
+		add("Company name not stated; add it before approving")
 	}
 	if len(strings.TrimSpace(p.Description)) < 35 {
 		add("Description too thin to assess")
@@ -520,10 +529,58 @@ func classify(p *Pitch, in Input, isReply bool) {
 		ready = false
 	}
 	if ready {
+		// A complete pitch is added to the sheet automatically only when it
+		// also fits nVentures' focus as stated in the email. Anything else
+		// waits for a person in Needs review; nothing is rejected for region
+		// or stage (the inbound funnel stays broad).
+		if gaps := FocusGaps(*p); len(gaps) > 0 {
+			ready = false
+			p.Reasons = append(p.Reasons, "Not added automatically: "+strings.Join(gaps, "; "))
+		}
+	}
+	if ready {
 		p.Status = "ready"
 	} else {
 		p.Status = "review"
 	}
+}
+
+var (
+	hqSentenceRe = regexp.MustCompile(`(?i)\b(headquartered in|headquarters (?:is |are )?in|hq (?:is )?in|hq:|based (?:in|out of))\s+([^.;\n]{2,80})`)
+	hqStopRe     = regexp.MustCompile(`(?i)\b(and|with|where|serving|serves|selling|for|since|but|while|who|which)\b`)
+	earlyStageRe = regexp.MustCompile(`(?i)\b(pre-?seed|seed|angel|bootstrapped|self-funded)\b`)
+	b2bSectorRe  = regexp.MustCompile(`(?i)\b(b2b|saas|enterprise|smes?|msmes?)\b`)
+)
+
+// FocusGaps lists what keeps a complete pitch from being added
+// automatically: a website, an explicitly stated HQ in South Asia or
+// Singapore, and a stated B2B focus or pre-seed/seed stage. Incorporation
+// country is not HQ; nothing is inferred.
+func FocusGaps(p Pitch) []string {
+	var gaps []string
+	if strings.TrimSpace(p.Website) == "" {
+		gaps = append(gaps, "no website stated")
+	}
+	if strings.TrimSpace(p.HQ) == "" {
+		gaps = append(gaps, "HQ not stated (incorporation country doesn't count)")
+	} else if !HQInFocus(p.HQ) {
+		gaps = append(gaps, "HQ outside South Asia/Singapore ("+p.HQ+")")
+	}
+	b2b := b2bSectorRe.MatchString(p.Sector) || (b2bRe.MatchString(p.Description) && !b2cRe.MatchString(p.Description))
+	if !b2b && !earlyStageRe.MatchString(p.Stage) {
+		gaps = append(gaps, "no B2B focus or pre-seed/seed stage stated")
+	}
+	return gaps
+}
+
+// HQInFocus reports whether a stated HQ names one of the focus countries.
+func HQInFocus(hq string) bool {
+	for _, c := range domain.Countries {
+		if regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(c) + `\b`).MatchString(hq) {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(s []string, v string) bool {

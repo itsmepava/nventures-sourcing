@@ -1,5 +1,5 @@
 // ---------- job progress ----------
-import { $, $$, JOB_LABEL, STATUS, api, app, badge, can, clearErrors, fieldError, fmtDate, fmtTime, fmtUSD, h, icon, need, parse, prefs, toast } from './core.js';
+import { $, $$, JOB_LABEL, STATUS, ago, api, app, badge, can, clearErrors, fieldError, fmtDate, fmtTime, fmtUSD, h, icon, need, parse, prefs, toast } from './core.js';
 
 export class JobWatcher {
   constructor(id, mount, onDone) { this.id = id; this.mount = mount; this.onDone = onDone; this.after = 0; this.events = []; this.timer = null; this.el = h('section', { class: 'job', 'aria-live': 'polite', 'aria-label': 'Job progress' }); mount.prepend(this.el); app.watchers.set(id, this); this.tick(); }
@@ -251,4 +251,13 @@ export function draftReply(pitch, data) {
       h('label', {}, 'Template', pick), h('label', {}, 'Subject', subject), h('label', {}, 'Message', body), h('div', { class: 'actions' }, open, copy));
   }).catch((e) => box.replaceChildren(h('h3', {}, 'Reply to founder'), h('p', { class: 'note bad' }, e.message)));
   return box;
+}
+
+// intakeStatus is the one-line automatic Gmail intake status.
+export function intakeStatus() {
+  const a = (app.state.readiness || {}).auto_intake;
+  if (!a) return null;
+  if (!a.enabled) return h('p', { class: 'status-line' }, h('span', { class: 'dot' }), 'Automatic intake is off', can('settings.manage') ? h('a', { href: '#/settings' }, 'Turn on') : null);
+  return h('p', { class: 'status-line' }, h('span', { class: 'dot ' + (a.problem ? 'warn' : 'ok') }),
+    `Checking Gmail every ${a.every_minutes} min`, a.last_at ? h('span', { class: 'muted' }, ` · ${ago(a.last_at)}: ${a.last_result}`) : h('span', { class: 'muted' }, ' · first check shortly'));
 }

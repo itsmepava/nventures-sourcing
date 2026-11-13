@@ -84,6 +84,7 @@ window.addEventListener('offline', () => setOffline(true));
 
 // ---------- formatting ----------
 export const fmtDate = (s) => { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); };
+export const ago = (s) => { const d = new Date(s); if (!s || isNaN(d)) return 'never'; const m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : fmtDate(s); };
 export const fmtTime = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
 export const fmtUSD = (n) => (n === null || n === undefined || n === '') ? 'Unknown' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 export const parse = (v) => { if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } } return v || {}; };

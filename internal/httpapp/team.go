@@ -179,6 +179,18 @@ func (a *App) notifyJobFinished(ctx context.Context, j store.Job) {
 	link := fmt.Sprintf("#/activity?job=%d", j.ID)
 	msg := fmt.Sprintf("%s #%d %s: %s", label, j.ID, strings.ReplaceAll(j.Status, "_", " "), j.Message)
 	_, scheduled := j.Params["schedule_id"]
+	if _, auto := j.Params["auto_intake"]; auto && j.Kind == "inbound_import" {
+		// One notification per automatic batch, for admins and pitch responders.
+		c := func(k string) int { f, _ := j.Counters[k].(float64); return int(f) }
+		switch {
+		case j.Status != "completed":
+			a.Store.Notify(ctx, nil, []string{auth.Admin}, "job", msg, link)
+		case c("imported") > 0:
+			a.Store.Notify(ctx, nil, []string{auth.Admin, auth.Responder}, "review",
+				fmt.Sprintf("%d new pitch(es): %d added to the sheet, %d need review", c("imported"), c("verified"), c("review")), "#/inbox")
+		}
+		return
+	}
 	switch {
 	case scheduled:
 		roles := []string{auth.Admin}
@@ -403,6 +415,7 @@ func (a *App) scheduler(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-t.C:
+			a.autoIntake(store.WithActor(context.Background(), store.Actor{Name: "Auto-intake"}), time.Now())
 			ctx := store.WithActor(context.Background(), store.Actor{Name: "Scheduler"})
 			due, err := a.Store.DueSchedules(ctx, time.Now())
 			if err != nil {

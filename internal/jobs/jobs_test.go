@@ -91,6 +91,10 @@ func pitchesByName(t *testing.T, st *store.Store) map[string]store.Pitch {
 	}
 	out := map[string]store.Pitch{}
 	for _, p := range ps {
+		if p.Name == "" { // names are never guessed; key unnamed pitches by message
+			out["#"+strings.TrimPrefix(p.MessageID, fixtures.DemoAccount+":")] = p
+			continue
+		}
 		out[p.Name] = p
 	}
 	return out
@@ -106,9 +110,21 @@ func TestInboundImportSyncAndRepeat(t *testing.T) {
 	if len(ps) < 14 {
 		t.Fatalf("expected every distinct message imported, got %d", len(ps))
 	}
-	if ps["Kelp Ledger (demo)"].Status != "verified" || ps["Orbit Pantry (demo)"].Status != "verified" || ps["Harbor Lens (demo)"].Status != "verified" {
-		t.Error("ready pitches (incl. same thread / same founder) not verified")
+	// Complete + in focus: added automatically (incl. same thread / same founder).
+	// Complete but outside the focus (Orbit Pantry, consumer, US): waits in review.
+	if ps["Kelp Ledger (demo)"].Status != "verified" || ps["Harbor Lens (demo)"].Status != "verified" || ps["GridLoom (demo)"].Status != "verified" || ps["Orbit Pantry (demo)"].Status != "review" {
+		t.Error("promising pitches not verified, or a non-focus pitch was synced")
 	}
+	// The Unicode/formula pitch has no website, so it waits in review; a
+	// reviewer approves it and it must reach the sheet byte-for-byte.
+	sumLabs := ps["=Sum Labs (demo) — කෘෂි"]
+	if sumLabs.Status != "review" {
+		t.Fatalf("=Sum Labs status %s", sumLabs.Status)
+	}
+	sumLabs.Status = "ready"
+	_ = h.st.UpdatePitch(context.Background(), sumLabs)
+	h.run(t, "inbound_sync", map[string]any{"ids": []any{float64(sumLabs.ID)}})
+	ps = pitchesByName(t, h.st)
 	rows := h.fx.Rows(fixtures.InboundSheetID, "Pitches")
 	names := map[string]int{}
 	for _, r := range rows[1:] {
@@ -135,7 +151,7 @@ func TestInboundImportSyncAndRepeat(t *testing.T) {
 			t.Error("newline lost in RAW write")
 		}
 	}
-	for _, n := range []string{"Kelp Ledger (demo)", "Orbit Pantry (demo)"} {
+	for _, n := range []string{"Kelp Ledger (demo)", "GridLoom (demo)"} {
 		if u := ps[n].SheetURL; !strings.HasPrefix(u, "#/demo-sheet?id="+fixtures.InboundSheetID+"&tab=Pitches&row=") {
 			t.Errorf("%s row link %q", n, u)
 		}
@@ -176,12 +192,13 @@ func TestPaginationLimitAndResume(t *testing.T) {
 func TestApproveThenSyncNowWithoutRescan(t *testing.T) {
 	h := newHarness(t)
 	h.run(t, "inbound_import", map[string]any{"limit": float64(100)})
-	p := pitchesByName(t, h.st)["Tidewell (demo)"]
-	if p.Status != "review" {
-		t.Fatalf("status %s", p.Status)
+	p := pitchesByName(t, h.st)["#demo-m04"] // Tidewell: name not stated in a field, so not guessed
+	if p.Status != "review" || p.Name != "" {
+		t.Fatalf("status %s name %q", p.Status, p.Name)
 	}
 	var d extract.Pitch
 	_ = json.Unmarshal(p.Data, &d)
+	d.Name, p.Name = "Tidewell (demo)", "Tidewell (demo)" // the reviewer types the name
 	d.Description = "Cold-chain monitoring sensors and software for seafood exporters in Bangladesh."
 	d.HQ = "Dhaka, Bangladesh (founder-reported)"
 	p.Data, _ = json.Marshal(d)
@@ -210,6 +227,10 @@ func TestApproveThenSyncNowWithoutRescan(t *testing.T) {
 
 func syncOne(t *testing.T, h *harness, name string) (store.Job, store.Pitch) {
 	p := pitchesByName(t, h.st)[name]
+	if p.Status == "review" { // a reviewer approves it first
+		p.Status = "ready"
+		_ = h.st.UpdatePitch(context.Background(), p)
+	}
 	j := h.run(t, "inbound_sync", map[string]any{"ids": []any{float64(p.ID)}})
 	got, _ := h.st.Pitch(context.Background(), p.ID)
 	return j, got

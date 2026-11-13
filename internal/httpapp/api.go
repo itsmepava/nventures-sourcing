@@ -81,7 +81,7 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings ----
 
-var settingKeys = map[string]int{"expected_account": 320, "gmail_query": 1000, "inbound_sheet": 200, "inbound_tab": 120, "outbound_sheet": 200, "outbound_tab": 120, "partner_tab": 120, "control_tab": 120, "outbound_sync": 5, "llm_enabled": 5, "llm_model": 200, "partner_search": 5}
+var settingKeys = map[string]int{"expected_account": 320, "gmail_query": 1000, "inbound_sheet": 200, "inbound_tab": 120, "outbound_sheet": 200, "outbound_tab": 120, "partner_tab": 120, "control_tab": 120, "outbound_sync": 5, "llm_enabled": 5, "llm_model": 200, "partner_search": 5, "auto_intake": 5}
 
 func (a *App) getSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -92,7 +92,7 @@ func (a *App) getSettings(w http.ResponseWriter, r *http.Request) {
 		"inbound_sheet": cfg.InboundSheet, "inbound_tab": cfg.InboundTab, "outbound_sheet": cfg.OutboundSheet, "outbound_tab": cfg.OutboundTab,
 		"partner_tab": cfg.PartnerTab, "control_tab": cfg.ControlTab, "outbound_sync": a.OutboundSyncEnabled(ctx),
 		"llm_enabled": a.Store.GetSetting(ctx, "cfg.llm_enabled", "false") == "true", "llm_model": a.Store.GetSetting(ctx, "cfg.llm_model", ""),
-		"partner_search": a.PartnerSearchOn(ctx), "partner_search_available": a.Cfg.Mode == "live" && a.Cfg.TavilyKey != "",
+		"auto_intake": a.AutoIntakeOn(ctx), "partner_search": a.PartnerSearchOn(ctx), "partner_search_available": a.Cfg.Mode == "live" && a.Cfg.TavilyKey != "",
 		"max_research": a.Cfg.MaxResearch, "env_file": a.Cfg.EnvFile,
 	})
 }
@@ -119,7 +119,7 @@ func (a *App) postSettings(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, "Unknown setting "+k)
 			return
 		}
-		if a.Cfg.Mode == "demo" && k != "llm_enabled" && k != "llm_model" {
+		if a.Cfg.Mode == "demo" && k != "llm_enabled" && k != "llm_model" && k != "auto_intake" {
 			writeErr(w, 400, "Demo mode uses fixed fixture destinations; switch APP_MODE to live to change them")
 			return
 		}

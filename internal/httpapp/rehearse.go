@@ -114,7 +114,7 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 	rep.Inbound = in
 	fail(in["status"] == "completed", fmt.Sprintf("inbound import status %v: %v", in["status"], in["message"]))
 	fail(num(in, "imported") == len(fixtures.Mailbox()), "every fixture message imported once")
-	fail(num(in, "verified") == 8 && num(in, "review") == 4 && num(in, "skipped") == 3 && num(in, "duplicates") == 1, fmt.Sprintf("inbound triage counts: %v", in["counters"]))
+	fail(num(in, "verified") == 3 && num(in, "review") == 9 && num(in, "skipped") == 3 && num(in, "duplicates") == 1, fmt.Sprintf("inbound triage counts: %v", in["counters"]))
 	rep.Steps = append(rep.Steps, fmt.Sprintf("Inbox import & sync: %v", in["message"]))
 
 	// Approve one pitch from review and sync it immediately without rescanning.
@@ -150,11 +150,11 @@ func Rehearse(dataDir, version string, log *slog.Logger) (RehearsalReport, error
 		} else {
 			fail(false, "Tidewell deck attachment missing")
 		}
-		code, _ := call("POST", fmt.Sprintf("/api/pitches/%.0f", id), map[string]any{"name": data["name"], "description": "Cold-chain monitoring sensors and software for seafood exporters.", "hq": hq, "contact": data["contact"], "website": data["website"], "notes": data["notes"], "decision": "ready"}, nil)
+		code, _ := call("POST", fmt.Sprintf("/api/pitches/%.0f", id), map[string]any{"name": "Tidewell (demo)", "description": "Cold-chain monitoring sensors and software for seafood exporters.", "hq": hq, "contact": data["contact"], "website": data["website"], "notes": data["notes"], "decision": "ready"}, nil)
 		fail(code == 200, "approve reviewed pitch")
 		s := start("/api/inbox/sync", map[string]any{"ids": []float64{id}})
 		fail(num(s, "verified") == 1, "selected pitch synced now")
-		rep.Steps = append(rep.Steps, "Reviewed pitch approved and synced immediately (no Gmail rescan)")
+		rep.Steps = append(rep.Steps, "Reviewed pitch named by the reviewer (names are never guessed), approved and synced immediately (no Gmail rescan)")
 	} else {
 		fail(false, "review pitch for approval not found")
 	}

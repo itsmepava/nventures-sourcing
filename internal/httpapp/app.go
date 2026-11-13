@@ -314,7 +314,7 @@ func (a *App) Readiness(ctx context.Context) map[string]any {
 		"legacy_adapters": map[string]any{"tavily_key_present": a.Cfg.TavilyKeyPresent, "openrouter_key_present": a.Cfg.OpenRouterKeyPresent, "used_by_go_app": a.PartnerSearchOn(ctx),
 			"note": "The Go app never calls OpenRouter. Tavily is used only if you switch on “Search the web for missing partner websites” in Settings (live mode), and only for partner names."},
 		"local_model": map[string]any{"enabled": a.Store.GetSetting(ctx, "cfg.llm_enabled", "false") == "true", "model": a.Store.GetSetting(ctx, "cfg.llm_model", ""), "endpoint": a.Cfg.OllamaURL},
-		"data_dir":    a.Cfg.ModeDir(), "loopback": a.Cfg.Loopback(),
+		"data_dir":    a.Cfg.ModeDir(), "loopback": a.Cfg.Loopback(), "auto_intake": a.autoIntakeStatus(ctx),
 	}
 }
 

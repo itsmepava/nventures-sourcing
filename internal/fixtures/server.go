@@ -270,7 +270,21 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"access_token": DemoAccessToken, "expires_in": 3600, "token_type": "Bearer"})
 }
 
+// AddMail delivers a new message to the demo mailbox (tests and demos).
+func (s *Server) AddMail(m Mail) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Mail = append(s.Mail, m)
+}
+
+func (s *Server) mailbox() []Mail {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Mail(nil), s.Mail...)
+}
+
 func (s *Server) gmail(w http.ResponseWriter, r *http.Request) {
+	mail := s.mailbox()
 	if r.Method != http.MethodGet {
 		writeJSON(w, 405, map[string]string{"error": "read-only fixture"})
 		return
@@ -278,7 +292,7 @@ func (s *Server) gmail(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/gmail/v1/users/me/")
 	switch {
 	case p == "profile":
-		writeJSON(w, 200, map[string]any{"emailAddress": DemoAccount, "messagesTotal": len(s.Mail)})
+		writeJSON(w, 200, map[string]any{"emailAddress": DemoAccount, "messagesTotal": len(mail)})
 	case p == "messages":
 		size := s.PageSize
 		if n, err := strconv.Atoi(r.URL.Query().Get("maxResults")); err == nil && n > 0 && n < size {
@@ -287,11 +301,11 @@ func (s *Server) gmail(w http.ResponseWriter, r *http.Request) {
 		start, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Query().Get("pageToken"), "p"))
 		// Gmail lists newest first.
 		var ids []map[string]string
-		for i := len(s.Mail) - 1 - start; i >= 0 && len(ids) < size; i-- {
-			ids = append(ids, map[string]string{"id": s.Mail[i].ID, "threadId": s.Mail[i].Thread})
+		for i := len(mail) - 1 - start; i >= 0 && len(ids) < size; i-- {
+			ids = append(ids, map[string]string{"id": mail[i].ID, "threadId": mail[i].Thread})
 		}
-		out := map[string]any{"messages": ids, "resultSizeEstimate": len(s.Mail)}
-		if start+size < len(s.Mail) {
+		out := map[string]any{"messages": ids, "resultSizeEstimate": len(mail)}
+		if start+size < len(mail) {
 			out["nextPageToken"] = fmt.Sprintf("p%d", start+size)
 		}
 		writeJSON(w, 200, out)
@@ -308,7 +322,7 @@ func (s *Server) gmail(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": map[string]any{"code": 404, "message": "Requested entity was not found."}})
 	case strings.HasPrefix(p, "messages/"):
 		id := strings.TrimPrefix(p, "messages/")
-		for _, m := range s.Mail {
+		for _, m := range mail {
 			if m.ID == id {
 				writeJSON(w, 200, m.Gmail())
 				return

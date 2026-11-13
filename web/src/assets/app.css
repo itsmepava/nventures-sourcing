@@ -353,3 +353,8 @@ a.panel.stat:hover { border-color: var(--blue); }
 .deck-page { margin-top: 8px; }
 .deck-page small { color: var(--muted); font-weight: 560; }
 .deck-page[hidden] { display: none; }
+
+.status-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 0; font-size: 12.5px; color: var(--text-2); }
+.status-line a { margin-left: 4px; }
+.muted { color: var(--muted); }
+.status-line .dot { margin-top: 0; }

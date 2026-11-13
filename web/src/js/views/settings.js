@@ -52,6 +52,7 @@ export async function renderSettings(main, params) {
       h('li', {}, h('span', { class: 'dot ok' }), h('div', {}, h('b', {}, 'Extraction'), h('span', {}, 'Deterministic local rules (no OpenRouter).'))),
       (r.legacy_adapters.tavily_key_present || r.legacy_adapters.openrouter_key_present) ? h('li', {}, h('span', { class: 'dot warn' }), h('div', {}, h('b', {}, 'Legacy paid keys present in .env'), h('span', {}, r.legacy_adapters.note))) : null,
       h('li', {}, h('span', { class: 'dot' }), h('div', {}, h('b', {}, 'Data folder'), h('span', {}, h('code', {}, r.data_dir))))),
+    autoIntakeField(s),
     partnerSearchField(s, r),
     h('div', { class: 'actions' }, need(h('button', { class: 'btn', onclick: async () => { try { const x = await api('/api/cache/clear', { method: 'POST' }); toast(`Cleared ${x.cleared} cached pages`); } catch (e) { toast(e.message, 'bad'); } } }, 'Clear page cache'), 'settings.manage'),
       r.mode === 'demo' ? need(h('button', { class: 'btn danger', onclick: async () => { if (await confirmDialog('Reset demo data?', 'All demo pitches, companies and history are removed and the fixture sheets are emptied. A backup of the demo database is written first. Live data is not affected.', 'Reset demo')) { try { await api('/api/demo/reset', { method: 'POST' }); toast('Demo data reset'); app.route(); } catch (e) { toast(e.message, 'bad'); } } } }, 'Reset demo data'), 'demo.reset') : null)));
@@ -85,4 +86,15 @@ function partnerSearchField(s, r) {
   const why = r.mode !== 'live' ? 'Live mode only.' : !s.partner_search_available ? 'Add TAVILY_API_KEY to .env and restart to make this available.' : 'Uses your Tavily plan (paid beyond its free allowance). Only partner names are sent.';
   return h('div', {}, h('label', { class: 'check' }, box, 'Search the web (Tavily) for missing partner websites'),
     h('p', { class: 'hint' }, 'When a partner has no Company Portfolio link, nVentures first tries the contact\'s work-email domain and addresses built from the partner\'s name, and accepts a site only if it names the partner. ' + why));
+}
+
+// Automatic Gmail intake (on by default).
+function autoIntakeField(s) {
+  const box = h('input', { type: 'checkbox', checked: s.auto_intake, disabled: !can('settings.manage') });
+  box.addEventListener('change', async () => {
+    try { await api('/api/settings', { method: 'POST', body: { auto_intake: box.checked } }); toast(box.checked ? 'Automatic intake on' : 'Automatic intake off'); loadState(); }
+    catch (e) { box.checked = !box.checked; toast(e.message, 'bad'); }
+  });
+  return h('div', {}, h('label', { class: 'check' }, box, 'Check Gmail for new pitches every 5 minutes'),
+    h('p', { class: 'hint' }, 'While the app is running. Pitches that are complete and state an HQ in South Asia or Singapore plus a B2B focus or pre-seed/seed stage are added to the sheet; the rest wait in Pitch inbox for review.'));
 }
