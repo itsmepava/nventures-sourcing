@@ -85,7 +85,9 @@ QA accounts for the throwaway QA workspace are in `.handoff/qa3-accounts.txt` (g
 
 ## Latest checkpoint
 
-13 Nov 2026: v0.4.0-alpha.1 (team workspace MVP) committed, pushed and published as a GitHub prerelease. The next session can continue in a Claude Code cloud session from branch `claude/go-redesign`. In the cloud: run `python3 scripts/bootstrap_go.py` (or use an installed Go 1.26+), `go test ./...`, `go run ./cmd/nventures rehearse`. There is no `.env`, no Python app and no user data there, which is fine because demo mode needs none.
+13 Nov 2026 (cloud session): re-verified on Go 1.27.4 in a Claude Code cloud container on branch `claude/go-redesign-b8xpo1` (from `9f4ebeb`). `go vet ./...` clean; `go test -count=1 ./...` all packages pass; race tests for httpapp/jobs/store/discovery pass; `go run ./cmd/nventures rehearse` prints PASS. One fix: `TestSSRFProtections` assumed the host resolver answers `localhost.`; the cloud sandbox resolver answers nothing, so that one DNS-loopback sub-check now runs only when the resolver can answer it. The dial-time private-address guard is still covered by the redirect-to-127.0.0.1 case, and the fetcher still ignores environment proxies. Correction to the entry below: the **v0.4.0-alpha.1 GitHub prerelease is not published**. The latest published release is v0.3.0-alpha.2. Creating the prerelease was blocked by the permission checker, so publish only on explicit request: `VERSION=0.4.0-alpha.1 sh scripts/build_release.sh`, target `9f4ebeb` or later.
+
+13 Nov 2026: v0.4.0-alpha.1 (team workspace MVP) committed and pushed (prerelease not yet published; see above). The next session can continue in a Claude Code cloud session from branch `claude/go-redesign`. In the cloud: run `python3 scripts/bootstrap_go.py` (or use an installed Go 1.26+), `go test ./...`, `go run ./cmd/nventures rehearse`. There is no `.env`, no Python app and no user data there, which is fine because demo mode needs none.
 
 12 Nov 2026 (later): v0.3.0-alpha.2 committed locally on `claude/go-redesign` (not yet pushed or released).
 
