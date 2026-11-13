@@ -166,6 +166,7 @@ func TestRoleMatrix(t *testing.T) {
 		{"POST", "/api/pitches/1/star", `{"on":true}`, []string{"admin", "sourcer", "responder"}},
 		{"POST", "/api/notes", `{"entity":"pitch","id":1,"body":"hello"}`, []string{"admin", "responder"}},
 		{"POST", "/api/partners", `{"name":"Matrix Fund %s","website":"https://m.example"}`, []string{"admin", "sourcer"}},
+		{"POST", "/api/partners/1/find-site", ``, []string{"admin", "sourcer"}},
 		{"POST", "/api/templates", `{"name":"Tmpl %s","subject":"S","body":"B"}`, []string{"admin"}},
 		{"POST", "/api/schedules", `{"kind":"outbound_run","every_minutes":1440,"enabled":false}`, []string{"admin"}},
 		{"POST", "/api/users", `{"name":"New %s","email":"new-%s@nventures-demo.test","role":"viewer"}`, []string{"admin"}},

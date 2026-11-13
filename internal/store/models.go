@@ -21,15 +21,22 @@ type Partner struct {
 	RunCount    int             `json:"run_count"`
 	LastAdded   int             `json:"last_added"`
 	LastReport  json.RawMessage `json:"last_report"`
+	// WebsiteSource says where Website came from: sheet, manual, email
+	// (the partner contact's email domain), guess (a checked address built
+	// from the name) or search (opt-in Tavily). "" for older records.
+	WebsiteSource string `json:"website_source"`
+	WebsiteNote   string `json:"website_note"`
+	SiteCheckedAt string `json:"site_checked_at"`
+	ContactHint   string `json:"-"` // partner-list contact cell, used only to find a website
 }
 
-const partnerCols = `id,name,website,relevant,last_sourced,run_count,last_added,last_report`
+const partnerCols = `id,name,website,relevant,last_sourced,run_count,last_added,last_report,website_source,website_note,site_checked_at,contact_hint`
 
 func scanPartner(sc interface{ Scan(...any) error }) (Partner, error) {
 	var p Partner
 	var rel int
 	var rep string
-	err := sc.Scan(&p.ID, &p.Name, &p.Website, &rel, &p.LastSourced, &p.RunCount, &p.LastAdded, &rep)
+	err := sc.Scan(&p.ID, &p.Name, &p.Website, &rel, &p.LastSourced, &p.RunCount, &p.LastAdded, &rep, &p.WebsiteSource, &p.WebsiteNote, &p.SiteCheckedAt, &p.ContactHint)
 	p.Relevant = rel == 1
 	p.LastReport = json.RawMessage(rep)
 	return p, err
@@ -67,7 +74,11 @@ func (s *Store) AddPartner(ctx context.Context, name, website string, relevant b
 	if relevant {
 		rel = 1
 	}
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO partners(name,website,relevant,created_at) VALUES(?,?,?,?)`, name, website, rel, Now())
+	src := ""
+	if website != "" {
+		src = "manual"
+	}
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO partners(name,website,relevant,created_at,website_source) VALUES(?,?,?,?,?)`, name, website, rel, Now(), src)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Partner{}, fmt.Errorf("partner already exists")
@@ -90,7 +101,11 @@ func (s *Store) Partner(ctx context.Context, id int64) (Partner, error) {
 // UpdatePartner changes website/relevance.
 func (s *Store) UpdatePartner(ctx context.Context, id int64, website *string, relevant *bool) (Partner, error) {
 	if website != nil {
-		if _, err := s.DB.ExecContext(ctx, `UPDATE partners SET website=? WHERE id=?`, *website, id); err != nil {
+		src := ""
+		if *website != "" {
+			src = "manual"
+		}
+		if _, err := s.DB.ExecContext(ctx, `UPDATE partners SET website=?, website_source=?, website_note='' WHERE id=?`, *website, src, id); err != nil {
 			return Partner{}, err
 		}
 	}
@@ -106,15 +121,34 @@ func (s *Store) UpdatePartner(ctx context.Context, id int64, website *string, re
 	return s.Partner(ctx, id)
 }
 
-// MergePartner imports a partner from the sheet, keeping the greater counters.
-func (s *Store) MergePartner(ctx context.Context, name, website string, relevant bool, lastSourced string, runCount int) error {
+// MergePartner imports a partner from the sheet, keeping the greater
+// counters. A website in the sheet wins; a blank sheet cell keeps a website
+// that was entered or found earlier. contactHint is the partner-list
+// contact cell, kept only to help find a missing website.
+func (s *Store) MergePartner(ctx context.Context, name, website string, relevant bool, lastSourced string, runCount int, contactHint string) error {
 	rel := 0
 	if relevant {
 		rel = 1
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO partners(name,website,relevant,last_sourced,run_count,created_at) VALUES(?,?,?,?,?,?)
-		ON CONFLICT(name) DO UPDATE SET website=CASE WHEN excluded.website<>'' THEN excluded.website ELSE partners.website END, relevant=excluded.relevant,
-		last_sourced=MAX(partners.last_sourced, excluded.last_sourced), run_count=MAX(partners.run_count, excluded.run_count)`, name, website, rel, lastSourced, runCount, Now())
+	src := ""
+	if website != "" {
+		src = "sheet"
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO partners(name,website,relevant,last_sourced,run_count,created_at,website_source,contact_hint) VALUES(?,?,?,?,?,?,?,?)
+		ON CONFLICT(name) DO UPDATE SET website=CASE WHEN excluded.website<>'' THEN excluded.website ELSE partners.website END,
+		website_source=CASE WHEN excluded.website<>'' THEN 'sheet' ELSE partners.website_source END,
+		website_note=CASE WHEN excluded.website<>'' THEN '' ELSE partners.website_note END,
+		contact_hint=CASE WHEN excluded.contact_hint<>'' THEN excluded.contact_hint ELSE partners.contact_hint END,
+		relevant=excluded.relevant,
+		last_sourced=MAX(partners.last_sourced, excluded.last_sourced), run_count=MAX(partners.run_count, excluded.run_count)`, name, website, rel, lastSourced, runCount, Now(), src, contactHint)
+	return err
+}
+
+// SetPartnerSite records the outcome of looking up a missing website. An
+// empty url records that nothing trustworthy was found (and when).
+func (s *Store) SetPartnerSite(ctx context.Context, id int64, url, source, note string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE partners SET website=CASE WHEN ?<>'' THEN ? ELSE website END, website_source=CASE WHEN ?<>'' THEN ? ELSE website_source END,
+		website_note=?, site_checked_at=? WHERE id=?`, url, url, url, source, note, Now(), id)
 	return err
 }
 

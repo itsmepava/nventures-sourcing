@@ -78,6 +78,7 @@ func (a *App) routes() []route {
 		{"GET /api/partners", V, a.listPartners},
 		{"POST /api/partners", auth.PartnersEdit, a.addPartner},
 		{"PATCH /api/partners/{id}", auth.PartnersEdit, a.updatePartner},
+		{"POST /api/partners/{id}/find-site", auth.PartnersEdit, a.findPartnerSite},
 
 		{"GET /api/jobs", V, a.listJobs},
 		{"GET /api/jobs/{id}", V, a.getJob},

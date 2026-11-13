@@ -51,8 +51,8 @@ func TestUpgradeFromSchemaOnePreservesData(t *testing.T) {
 		t.Error("job history lost")
 	}
 	// Schema 4: deck readings attach to existing pitches and go with them.
-	if v := st.SchemaVersion(ctx); v != 4 {
-		t.Fatalf("expected schema 4, got %d", v)
+	if v := st.SchemaVersion(ctx); v != 5 {
+		t.Fatalf("expected schema 5, got %d", v)
 	}
 	if ds, err := st.Decks(ctx, 1); err != nil || len(ds) != 0 {
 		t.Fatalf("decks on upgraded pitch: %v %v", ds, err)

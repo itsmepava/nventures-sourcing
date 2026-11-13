@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/itsmepava/nventures-sourcing/internal/config"
@@ -42,6 +43,8 @@ type App struct {
 	stopBeat      context.CancelFunc
 	stopSched     chan struct{}
 	schedulerTick time.Duration
+	paidSearches  atomic.Int64 // opt-in Tavily requests since start
+	searchBase    string       // Tavily API base (tests point this at a fake)
 
 	oauthMu sync.Mutex
 	pending map[string]google.PKCE
@@ -129,7 +132,7 @@ func New(cfg config.Config, version string, log *slog.Logger) (*App, error) {
 		a.seedDemo(ctx)
 	}
 	a.Crawler = &discovery.Crawler{F: fetcher, Limits: discovery.DefaultLimits}
-	a.Jobs = jobs.NewManager(jobs.Env{Store: st, Crawler: a.Crawler, Config: a.JobConfig, Connect: a.Connect, Owner: a.owner, Log: log, OnFinish: a.notifyJobFinished})
+	a.Jobs = jobs.NewManager(jobs.Env{Store: st, Crawler: a.Crawler, Sites: a.SiteFinder, Config: a.JobConfig, Connect: a.Connect, Owner: a.owner, Log: log, OnFinish: a.notifyJobFinished})
 	a.schedulerTick = 20 * time.Second
 	a.stopSched = make(chan struct{})
 	return a, nil
@@ -306,11 +309,32 @@ func (a *App) Readiness(ctx context.Context) map[string]any {
 	outbound := map[string]any{"sheet_set": cfg.OutboundSheet != "", "sheet_id": cfg.OutboundSheet, "tab": cfg.OutboundTab, "partner_tab": cfg.PartnerTab, "control_tab": cfg.ControlTab, "sync_enabled": a.OutboundSyncEnabled(ctx), "ready": cfg.OutboundSheet != "" && ((hasClient && refresh != "") || a.Cfg.ServiceAccount != "") && a.OutboundSyncEnabled(ctx)}
 	return map[string]any{
 		"mode": a.Cfg.Mode, "version": a.Version, "google": google, "inbound": inbound, "outbound": outbound,
-		"discovery":  map[string]any{"provider": "first-party crawler", "paid_search": false, "counters": a.Crawler.F.Counters.Snapshot()},
+		"discovery":  map[string]any{"provider": "first-party crawler", "paid_search": a.PartnerSearchOn(ctx), "paid_search_requests": a.paidSearches.Load(), "counters": a.Crawler.F.Counters.Snapshot()},
 		"extraction": map[string]any{"provider": "deterministic local rules", "hosted_model": false},
-		"legacy_adapters": map[string]any{"tavily_key_present": a.Cfg.TavilyKeyPresent, "openrouter_key_present": a.Cfg.OpenRouterKeyPresent, "used_by_go_app": false,
-			"note": "The Go app never calls Tavily or OpenRouter. Those keys are only used by the legacy Python app if you run it."},
+		"legacy_adapters": map[string]any{"tavily_key_present": a.Cfg.TavilyKeyPresent, "openrouter_key_present": a.Cfg.OpenRouterKeyPresent, "used_by_go_app": a.PartnerSearchOn(ctx),
+			"note": "The Go app never calls OpenRouter. Tavily is used only if you switch on “Search the web for missing partner websites” in Settings (live mode), and only for partner names."},
 		"local_model": map[string]any{"enabled": a.Store.GetSetting(ctx, "cfg.llm_enabled", "false") == "true", "model": a.Store.GetSetting(ctx, "cfg.llm_model", ""), "endpoint": a.Cfg.OllamaURL},
 		"data_dir":    a.Cfg.ModeDir(), "loopback": a.Cfg.Loopback(),
 	}
+}
+
+// PartnerSearchOn reports whether the opt-in Tavily lookup for missing
+// partner websites is enabled: live mode, a key in the environment, and the
+// setting switched on.
+func (a *App) PartnerSearchOn(ctx context.Context) bool {
+	return a.Cfg.Mode == "live" && a.Cfg.TavilyKey != "" && a.Store.GetSetting(ctx, "cfg.partner_search", "false") == "true"
+}
+
+// SiteFinder returns the finder for partners without a website. Demo mode
+// guesses only demo addresses; live mode tries common fund domains, and adds
+// Tavily search only when PartnerSearchOn.
+func (a *App) SiteFinder(ctx context.Context) *discovery.SiteFinder {
+	f := &discovery.SiteFinder{F: a.Crawler.F}
+	if a.Cfg.Mode == "demo" {
+		f.TLDs = []string{strings.TrimPrefix(fixtures.DemoSuffix, ".")}
+	}
+	if a.PartnerSearchOn(ctx) {
+		f.Search = discovery.TavilySearch(a.hc, a.searchBase, a.Cfg.TavilyKey, func() { a.paidSearches.Add(1) })
+	}
+	return f
 }

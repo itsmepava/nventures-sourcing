@@ -98,6 +98,23 @@ Also fixed: the 375 px top-bar overflow on every page (a v0.4 regression) and th
 
 Note: Go's native fuzzer stalls after its seed corpus in this sandbox, though every corpus input runs in under 3 ms. The opt-in mutation test with a watchdog was used instead, and the fuzz target still runs its seeds in `go test`.
 
+### Live sheet layout and partner websites (13 Nov 2026, cloud session, later)
+
+The user shared the team's real header rows: sourcing tab `Active Sourcing` (38 columns, no `Total Funding USD`), `Partner List` (website in `Company Portfolio`, often blank) and `Sourcing Control`. The old app searched blank partners by name with Tavily.
+
+Delivered:
+- The `Company Portfolio` column is the crawl start, and a deep link is treated as the portfolio page.
+- `source` and `Updates (sourcing sheet)` are filled, and the funding total goes to `Extra Notes` when the sheet has no funding column.
+- `discovery.SiteFinder` finds missing partner websites. It tries the contact's work-email domain first, then checked guesses built from the name (strict: the page must name the partner and be about investing, and parked domains are rejected), then opt-in Tavily (live mode + `TAVILY_API_KEY` + Settings switch; only the name is sent).
+- Results are stored as "found — confirm" (schema 5), with **Find website** / **Confirm website** on the Partners page. A failed lookup is retried after 7 days, and each lookup is capped at 90 s. The sheet's partner list is never changed.
+
+Verified:
+- Tests run against the real header row, plus finder unit tests (guess order, parked/look-alike rejection, free-mail ignored, search after free methods, a fake Tavily server request).
+- HTTP tests cover roles, confirm/409, lookup during a run with the 7-day memory, and the setting rules; the key never appears in any API response.
+- Full suite, `-race` and rehearse pass.
+- Browser QA of Partners find → confirm, and of the Settings switch (disabled in demo): no console errors.
+- Not verified: live Tavily, live guessing against real domains.
+
 ## Not verified (external)
 
 - **Live Gmail/Sheets**: no OAuth client or consent available. Verified only against the local fixture implementing the same API contracts.

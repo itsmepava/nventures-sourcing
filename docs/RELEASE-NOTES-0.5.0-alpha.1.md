@@ -12,6 +12,15 @@ Builds on v0.4.0-alpha.1 (team workspace MVP). The v0.4.0-alpha.1 prerelease was
 - Every reading is audited (file name, status and page count, never the deck's contents) and attributed to the person who asked for it. Reading again replaces the previous reading.
 - **Demo and rehearsal.** The demo mailbox now includes a generated PDF deck (Tidewell) and PPTX deck (Byte Bazaar). `nventures rehearse` reads the Tidewell deck and approves the pitch using the HQ evidenced on page 2.
 
+## Partners without a website
+
+- Partner lists can use a **`Company Portfolio`** column (a link to the fund's portfolio page) instead of `Website`. A deep link is treated as the company list itself.
+- **When the link is blank, nVentures finds the website** before crawling: first the partner contact's work-email domain, then a short list of addresses built from the fund's name. A site is accepted only if the page names the partner and is about investing; parked and for-sale domains are rejected.
+- **Optional Tavily search**, like the old app, for partners the free methods can't find. It is off by default and needs `TAVILY_API_KEY` in `.env`, live mode, and **Settings → Search the web (Tavily) for missing partner websites**. Only the partner's name is sent, and requests are counted in Settings.
+- **Found websites are marked "found — confirm"** on the Partners page, with how they were found, and can be confirmed or corrected. The sheet's partner list is never modified. A failed lookup is retried after 7 days, or on demand with **Find website**.
+- **The team's sourcing tab layout is supported:** `source` and `Updates (sourcing sheet)` are filled; analyst, valuation, raise and founder-email columns stay blank; without a `Total Funding USD` column, the evidenced total goes into `Extra Notes`.
+- Schema 5 adds where each partner website came from (upgrades automatically).
+
 ## How the reader works
 
 - **PDF:** a bounded object parser that does not depend on cross-reference tables. It handles object streams, Flate/LZW/ASCII85/ASCIIHex/RunLength filters, ToUnicode maps, simple and composite (Identity-H) fonts, glyph-name encodings, glyph widths (for word spacing), Form XObjects and inline images.
@@ -42,6 +51,7 @@ Builds on v0.4.0-alpha.1 (team workspace MVP). The v0.4.0-alpha.1 prerelease was
 
 ## Not verified / limits
 
+- Website guessing and Tavily search were tested against local fixtures only (fake sites and a fake Tavily server). No live Tavily request has been made.
 - Live Gmail and Sheets are still unverified because no Google credentials are configured. Attachment download uses Gmail's documented read-only `messages.attachments.get` and was tested against the local fixture only.
 - No OCR: scanned or image-only decks are reported, not read. Deck links (DocSend, Drive, Pitch, …) are not fetched because they usually need the founder's sign-in.
 - Facts are pattern-based suggestions for a human reviewer. They can miss phrasing the patterns don't cover, and they are never applied automatically.

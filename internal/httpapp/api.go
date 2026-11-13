@@ -80,7 +80,7 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings ----
 
-var settingKeys = map[string]int{"expected_account": 320, "gmail_query": 1000, "inbound_sheet": 200, "inbound_tab": 120, "outbound_sheet": 200, "outbound_tab": 120, "partner_tab": 120, "control_tab": 120, "outbound_sync": 5, "llm_enabled": 5, "llm_model": 200}
+var settingKeys = map[string]int{"expected_account": 320, "gmail_query": 1000, "inbound_sheet": 200, "inbound_tab": 120, "outbound_sheet": 200, "outbound_tab": 120, "partner_tab": 120, "control_tab": 120, "outbound_sync": 5, "llm_enabled": 5, "llm_model": 200, "partner_search": 5}
 
 func (a *App) getSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -91,6 +91,7 @@ func (a *App) getSettings(w http.ResponseWriter, r *http.Request) {
 		"inbound_sheet": cfg.InboundSheet, "inbound_tab": cfg.InboundTab, "outbound_sheet": cfg.OutboundSheet, "outbound_tab": cfg.OutboundTab,
 		"partner_tab": cfg.PartnerTab, "control_tab": cfg.ControlTab, "outbound_sync": a.OutboundSyncEnabled(ctx),
 		"llm_enabled": a.Store.GetSetting(ctx, "cfg.llm_enabled", "false") == "true", "llm_model": a.Store.GetSetting(ctx, "cfg.llm_model", ""),
+		"partner_search": a.PartnerSearchOn(ctx), "partner_search_available": a.Cfg.Mode == "live" && a.Cfg.TavilyKey != "",
 		"max_research": a.Cfg.MaxResearch, "env_file": a.Cfg.EnvFile,
 	})
 }
@@ -127,6 +128,10 @@ func (a *App) postSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if utf8.RuneCountInString(s) > limit {
 			writeErr(w, 400, k+" is too long")
+			return
+		}
+		if k == "partner_search" && s == "true" && a.Cfg.TavilyKey == "" {
+			writeErr(w, 400, "Add TAVILY_API_KEY to .env and restart before switching on web search for partner websites")
 			return
 		}
 		if k == "expected_account" && s != "" && !strings.Contains(s, "@") {
@@ -460,6 +465,36 @@ func (a *App) updatePartner(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Store.Audit(r.Context(), 0, "partner_updated", fmt.Sprintf("%s updated (included: %v)", p.Name, p.Relevant), nil)
 	writeJSON(w, 200, p)
+}
+
+// findPartnerSite looks up a missing (or re-checks a found) partner website
+// on request. A website entered by hand or taken from the sheet is kept.
+func (a *App) findPartnerSite(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	ctx := r.Context()
+	p, err := a.Store.Partner(ctx, id)
+	if !ok || err != nil {
+		writeErr(w, 404, "Partner not found")
+		return
+	}
+	if p.Website != "" && (p.WebsiteSource == "sheet" || p.WebsiteSource == "manual" || p.WebsiteSource == "") {
+		writeErr(w, 409, "This partner already has a website. Clear it first to look for another one.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	res := a.SiteFinder(ctx).Find(ctx, p.Name, p.ContactHint)
+	if err := a.Store.SetPartnerSite(ctx, p.ID, res.URL, res.Source, res.Note); err != nil {
+		writeErr(w, 500, "Could not save")
+		return
+	}
+	msg := p.Name + ": no website found"
+	if res.URL != "" {
+		msg = fmt.Sprintf("%s: website found — %s (%s)", p.Name, res.URL, res.Source)
+	}
+	a.Store.Audit(ctx, 0, "partner_site", msg, map[string]any{"partner_id": p.ID, "url": res.URL, "source": res.Source, "checked": len(res.Tried)})
+	p, _ = a.Store.Partner(ctx, id)
+	writeJSON(w, 200, map[string]any{"partner": p, "result": res})
 }
 
 // ---- jobs ----

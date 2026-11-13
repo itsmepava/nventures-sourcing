@@ -43,6 +43,8 @@ type Config struct {
 type Env struct {
 	Store   *store.Store
 	Crawler *discovery.Crawler
+	// Sites, if set, returns the finder used for partners without a website.
+	Sites   func(ctx context.Context) *discovery.SiteFinder
 	Config  func(ctx context.Context) Config
 	Connect func(ctx context.Context) (*Conn, error)
 	Owner   string

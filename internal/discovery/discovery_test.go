@@ -2,6 +2,7 @@ package discovery_test
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -238,5 +239,83 @@ func TestDeepLinkPortfolioSeed(t *testing.T) {
 	// portfolio is still visited too, for coverage).
 	if !got["ledgerleaf"] || !got["factorysignal"] {
 		t.Fatalf("candidates from deep link: %+v warnings %v", rep.Candidates, rep.Warnings)
+	}
+}
+
+func newFinder(t *testing.T, search func(context.Context, string) ([]string, error)) *discovery.SiteFinder {
+	c, _, _ := newCrawler(t)
+	return &discovery.SiteFinder{F: c.F, TLDs: []string{strings.TrimPrefix(fixtures.DemoSuffix, ".")}, Search: search}
+}
+
+func TestSiteFinderGuessesAndVerifies(t *testing.T) {
+	ctx := context.Background()
+	f := newFinder(t, nil)
+	r := f.Find(ctx, "Indus Bridge Capital (demo)", "")
+	if r.URL != "https://indusbridge"+fixtures.DemoSuffix+"/" || r.Source != "guess" {
+		t.Fatalf("guess: %+v", r)
+	}
+	// The full name ("indusbridgecapital") is tried first and does not exist.
+	if len(r.Tried) < 2 || r.Tried[0].URL != "https://indusbridgecapital"+fixtures.DemoSuffix+"/" {
+		t.Errorf("order: %+v", r.Tried)
+	}
+	// A for-sale page and a site with a different name are never accepted.
+	for _, name := range []string{"Parked Fund", "Kandy Growth Partners"} {
+		if r := f.Find(ctx, name, ""); r.URL != "" || !strings.Contains(r.Note, "no website found") {
+			t.Errorf("%s accepted: %+v", name, r)
+		}
+	}
+	// Free-mail contacts are ignored; a work email's domain is used.
+	r = f.Find(ctx, "Some Unknown Angels", "Asha Perera <asha.p@gmail.com>, asha@lankaseed"+fixtures.DemoSuffix)
+	if r.URL != "https://lankaseed"+fixtures.DemoSuffix+"/" || r.Source != "email" {
+		t.Fatalf("email hint: %+v", r)
+	}
+	for _, tr := range r.Tried {
+		if strings.Contains(tr.URL, "gmail") {
+			t.Error("free-mail domain was fetched")
+		}
+	}
+}
+
+func TestSiteFinderOptInSearch(t *testing.T) {
+	ctx := context.Background()
+	var queries []string
+	search := func(_ context.Context, q string) ([]string, error) {
+		queries = append(queries, q)
+		return []string{"https://www.linkedin.com/company/x", "https://kandygrowth" + fixtures.DemoSuffix + "/about", "https://indusbridge" + fixtures.DemoSuffix + "/team"}, nil
+	}
+	f := newFinder(t, search)
+	f.TLDs = []string{"invalid"} // make guessing fail so search is used
+	r := f.Find(ctx, "Indus Bridge Capital (demo)", "")
+	if r.URL != "https://indusbridge"+fixtures.DemoSuffix+"/" || r.Source != "search" || len(queries) != 1 || !strings.Contains(queries[0], `"Indus Bridge Capital (demo)"`) {
+		t.Fatalf("search: %+v %q", r, queries)
+	}
+	for _, tr := range r.Tried {
+		if strings.Contains(tr.URL, "linkedin") {
+			t.Error("social profile fetched as a website")
+		}
+	}
+	// Search is only reached after free methods fail: no query when a guess works.
+	queries = nil
+	f.TLDs = []string{strings.TrimPrefix(fixtures.DemoSuffix, ".")}
+	if r := f.Find(ctx, "Indus Bridge Capital (demo)", ""); r.Source != "guess" || len(queries) != 0 {
+		t.Errorf("search used although a guess worked: %+v %d", r, len(queries))
+	}
+}
+
+func TestTavilySearchRequest(t *testing.T) {
+	var got struct {
+		auth, path string
+		body       map[string]any
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.auth, got.path = r.Header.Get("Authorization"), r.URL.Path
+		json.NewDecoder(r.Body).Decode(&got.body)
+		w.Write([]byte(`{"results":[{"url":"https://a.example/x"},{"url":"https://b.example"}]}`))
+	}))
+	defer srv.Close()
+	n := 0
+	urls, err := discovery.TavilySearch(srv.Client(), srv.URL, "tvly-test", func() { n++ })(context.Background(), "q")
+	if err != nil || len(urls) != 2 || got.auth != "Bearer tvly-test" || got.path != "/search" || got.body["query"] != "q" || n != 1 {
+		t.Fatalf("%v %v %+v %d", urls, err, got, n)
 	}
 }

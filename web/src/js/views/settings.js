@@ -48,10 +48,11 @@ export async function renderSettings(main, params) {
   const llmPanel = h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Local model (optional)'), h('p', {}, 'Off by default. Suggestions are advisory only and never change qualification, statuses or sheets.'))), h('div', { class: 'panel-body form', id: 'llm-body' }, h('p', { class: 'hint' }, 'Checking for a local Ollama server…')));
   const other = h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Providers & data')), h('div', { class: 'panel-body form' },
     h('ul', { class: 'ready-list' },
-      h('li', {}, h('span', { class: 'dot ok' }), h('div', {}, h('b', {}, 'Discovery'), h('span', {}, 'First-party crawler (no Tavily). Pages fetched: ' + r.discovery.counters.pages_fetched + ' · cache hits: ' + r.discovery.counters.cache_hits))),
+      h('li', {}, h('span', { class: 'dot ok' }), h('div', {}, h('b', {}, 'Discovery'), h('span', {}, (r.discovery.paid_search ? 'First-party crawler; Tavily search on for missing partner websites only (' + r.discovery.paid_search_requests + ' requests since start). ' : 'First-party crawler (no Tavily). ') + 'Pages fetched: ' + r.discovery.counters.pages_fetched + ' · cache hits: ' + r.discovery.counters.cache_hits))),
       h('li', {}, h('span', { class: 'dot ok' }), h('div', {}, h('b', {}, 'Extraction'), h('span', {}, 'Deterministic local rules (no OpenRouter).'))),
       (r.legacy_adapters.tavily_key_present || r.legacy_adapters.openrouter_key_present) ? h('li', {}, h('span', { class: 'dot warn' }), h('div', {}, h('b', {}, 'Legacy paid keys present in .env'), h('span', {}, r.legacy_adapters.note))) : null,
       h('li', {}, h('span', { class: 'dot' }), h('div', {}, h('b', {}, 'Data folder'), h('span', {}, h('code', {}, r.data_dir))))),
+    partnerSearchField(s, r),
     h('div', { class: 'actions' }, need(h('button', { class: 'btn', onclick: async () => { try { const x = await api('/api/cache/clear', { method: 'POST' }); toast(`Cleared ${x.cleared} cached pages`); } catch (e) { toast(e.message, 'bad'); } } }, 'Clear page cache'), 'settings.manage'),
       r.mode === 'demo' ? need(h('button', { class: 'btn danger', onclick: async () => { if (await confirmDialog('Reset demo data?', 'All demo pitches, companies and history are removed and the fixture sheets are emptied. A backup of the demo database is written first. Live data is not affected.', 'Reset demo')) { try { await api('/api/demo/reset', { method: 'POST' }); toast('Demo data reset'); app.route(); } catch (e) { toast(e.message, 'bad'); } } } }, 'Reset demo data'), 'demo.reset') : null)));
   main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Settings'), h('p', {}, `Mode: ${r.mode}. Configuration from ${s.env_file || 'environment'} plus the values saved here.`))),
@@ -72,3 +73,16 @@ export async function renderSettings(main, params) {
   }).catch(() => {});
 }
 
+
+// Opt-in Tavily lookup for partners whose website is missing. Free methods
+// (contact email domain, checked name-based addresses) always run first.
+function partnerSearchField(s, r) {
+  const box = h('input', { type: 'checkbox', checked: s.partner_search, disabled: !s.partner_search_available || !can('settings.manage') });
+  box.addEventListener('change', async () => {
+    try { await api('/api/settings', { method: 'POST', body: { partner_search: box.checked } }); toast(box.checked ? 'Web search on for missing partner websites' : 'Web search off'); loadState(); }
+    catch (e) { box.checked = !box.checked; toast(e.message, 'bad'); }
+  });
+  const why = r.mode !== 'live' ? 'Live mode only.' : !s.partner_search_available ? 'Add TAVILY_API_KEY to .env and restart to make this available.' : 'Uses your Tavily plan (paid beyond its free allowance). Only partner names are sent.';
+  return h('div', {}, h('label', { class: 'check' }, box, 'Search the web (Tavily) for missing partner websites'),
+    h('p', { class: 'hint' }, 'When a partner has no Company Portfolio link, nVentures first tries the contact\'s work-email domain and addresses built from the partner\'s name, and accepts a site only if it names the partner. ' + why));
+}

@@ -49,6 +49,7 @@ type Config struct {
 	// Legacy paid adapters: detected for honest reporting only. The Go app
 	// does not call them.
 	TavilyKeyPresent     bool
+	TavilyKey            string // opt-in partner-website search only; never returned by the API or logged
 	OpenRouterKeyPresent bool
 }
 
@@ -192,7 +193,8 @@ func Load(envFile string) (Config, error) {
 		c.MaxResearch = 45
 	}
 	c.OllamaURL = get("http://127.0.0.1:11434", "NV_OLLAMA_URL")
-	c.TavilyKeyPresent = get("", "TAVILY_API_KEY") != ""
+	c.TavilyKey = get("", "TAVILY_API_KEY")
+	c.TavilyKeyPresent = c.TavilyKey != ""
 	c.OpenRouterKeyPresent = get("", "OPENROUTER_API_KEY") != ""
 	if !c.Loopback() && (!c.AllowRemote || c.BaseURL == "") {
 		return c, errors.New("binding to a non-loopback address requires NV_ALLOW_REMOTE=1 and NV_BASE_URL; the default is 127.0.0.1 (this computer only)")

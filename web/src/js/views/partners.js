@@ -2,6 +2,14 @@
 import { demoLink } from '../components.js';
 import { $, api, app, badge, can, clearErrors, fieldError, fmtDate, h, icon, need, openOverlay, parse, roleReason, toast } from '../core.js';
 
+const FOUND = { email: 1, guess: 1, search: 1 };
+const SOURCE = {
+  sheet: 'From the partner list (Company Portfolio / Website).', manual: 'Entered or confirmed in nVentures.',
+  email: 'Found from the contact\'s email domain — please check it is the fund\'s own site.',
+  guess: 'Found by checking addresses built from the partner\'s name — please check it is the fund\'s own site.',
+  search: 'Found by web search (Tavily) — please check it is the fund\'s own site.',
+};
+
 export async function renderPartners(main) {
   const list = h('section', { class: 'panel' });
   async function load() {
@@ -10,7 +18,7 @@ export async function renderPartners(main) {
       ps.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Partner'), h('th', { class: 'hide-mobile' }, 'Website'), h('th', { class: 'tight' }, 'Runs'), h('th', { class: 'tight hide-mobile' }, 'Last added'), h('th', { class: 'tight hide-mobile' }, 'Last visit'), h('th', { class: 'tight' }, 'In rotation'))),
         h('tbody', {}, ps.map((p) => { const rep = parse(p.last_report); return h('tr', { onclick: (e) => { if (!e.target.closest('input,button,a')) openPartner(p, load); } },
           h('td', {}, h('div', { class: 'cell-main' }, p.name), (rep.warnings || []).length ? h('div', { class: 'cell-sub' }, rep.warnings[0]) : null),
-          h('td', { class: 'hide-mobile' }, p.website ? h('a', { href: demoLink(p.website), target: '_blank', rel: 'noopener noreferrer' }, p.website) : h('span', { class: 'badge warn' }, 'no website')),
+          h('td', { class: 'hide-mobile' }, p.website ? h('span', {}, h('a', { href: demoLink(p.website), target: '_blank', rel: 'noopener noreferrer' }, p.website), FOUND[p.website_source] ? h('span', { class: 'badge warn', title: p.website_note, style: 'margin-left:6px' }, 'found — confirm') : null) : h('span', { class: 'badge warn', title: p.website_note || 'Add a Company Portfolio link in the partner list, or set it here' }, 'no website')),
           h('td', { class: 'tight' }, p.run_count), h('td', { class: 'tight hide-mobile' }, p.last_added), h('td', { class: 'tight hide-mobile' }, p.last_sourced ? fmtDate(p.last_sourced) : 'Never'),
           h('td', { class: 'tight' }, h('input', { type: 'checkbox', checked: p.relevant, disabled: !can('partners.edit'), title: can('partners.edit') ? null : roleReason('partners.edit'), 'aria-label': 'Include ' + p.name + ' in rotation', onchange: async (e) => { try { await api('/api/partners/' + p.id, { method: 'PATCH', body: { relevant: e.target.checked } }); toast(e.target.checked ? 'Included in rotation' : 'Excluded from rotation'); } catch (err) { toast(err.message, 'bad'); e.target.checked = !e.target.checked; } } }))); })))) : h('div', { class: 'empty' }, h('b', {}, 'No partners'), 'Add a partner with its official website, or connect the partner sheet.'));
   }
@@ -26,8 +34,22 @@ export async function renderPartners(main) {
 export function openPartner(p, after) {
   const rep = parse(p.last_report);
   const site = h('input', { type: 'url', value: p.website, maxlength: 500, disabled: !can('partners.edit') });
+  const found = !!FOUND[p.website_source] && !!p.website;
+  const sourceLine = p.website ? h('p', { class: found ? 'note warn' : 'hint' }, SOURCE[p.website_source] || 'Website set earlier.', found && p.website_note ? h('span', {}, ' Checked: ' + p.website_note + '.') : null)
+    : h('p', { class: 'note warn' }, p.website_note ? 'No website. ' + p.website_note : 'No website yet. The next sourcing run will try to find one, or click Find website.');
+  const canEdit = can('partners.edit');
+  const findBtn = (!p.website || found) ? h('button', { class: 'btn', type: 'button', onclick: async () => {
+    try { const x = await api(`/api/partners/${p.id}/find-site`, { method: 'POST' }); toast(x.result.url ? 'Found ' + x.result.url + ' — check it, then confirm' : 'No website found'); d.close(true); after && after(); }
+    catch (e) { toast(e.message, 'bad'); }
+  } }, icon('search'), p.website ? 'Look again' : 'Find website') : null;
+  const confirmBtn = found ? h('button', { class: 'btn', type: 'button', onclick: async () => {
+    try { await api('/api/partners/' + p.id, { method: 'PATCH', body: { website: p.website } }); toast('Website confirmed'); d.close(true); after && after(); }
+    catch (e) { toast(e.message, 'bad'); }
+  } }, icon('check'), 'Confirm website') : null;
+  if (!canEdit) { need(findBtn, 'partners.edit'); need(confirmBtn, 'partners.edit'); }
   const d = openOverlay({ isDirty: () => site.value !== p.website, title: p.name, sub: `${p.run_count} runs · last visit ${p.last_sourced ? fmtDate(p.last_sourced) : 'never'}`, body: h('div', { class: 'drawer-body' },
-    h('label', {}, 'Official website', site),
+    h('label', {}, 'Official website or portfolio page', site), sourceLine,
+    findBtn || confirmBtn ? h('div', { class: 'actions' }, confirmBtn, findBtn) : null,
     rep.pages_visited !== undefined ? h('div', { class: 'facts' }, h('div', {}, h('small', {}, 'Pages visited'), h('span', {}, rep.pages_visited)), h('div', {}, h('small', {}, 'Company links'), h('span', {}, rep.candidates)), h('div', {}, h('small', {}, 'Added last time'), h('span', {}, rep.added)), h('div', {}, h('small', {}, 'Crawl complete'), h('span', {}, rep.complete ? 'Yes' : 'No — limits or blocks'))) : h('p', { class: 'hint' }, 'Not crawled yet.'),
     (rep.warnings || []).length ? h('div', { class: 'note warn' }, h('b', {}, 'Last crawl warnings'), h('ul', { class: 'reasons' }, rep.warnings.map((w) => h('li', {}, w)))) : null),
   foot: [h('button', { class: 'btn', onclick: () => d.close() }, 'Close'), can('partners.edit') ? h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/partners/' + p.id, { method: 'PATCH', body: { website: site.value } }); toast('Saved'); d.close(true); after(); } catch (e) { toast(e.message, 'bad'); } } }, 'Save') : null] });

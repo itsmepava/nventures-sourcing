@@ -1,10 +1,12 @@
 package jobs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/itsmepava/nventures-sourcing/internal/discovery"
 	"github.com/itsmepava/nventures-sourcing/internal/domain"
@@ -114,7 +116,7 @@ func (r *run) importPartners(conn *Conn) {
 		}
 		st := append(state[google.Norm(name)], "", "", "", "")
 		runs, _ := strconv.Atoi(st[2])
-		if err := r.env.Store.MergePartner(r.ctx, name, PartnerSite(func(k string) string { return cell(row, k) }), !strings.EqualFold(cell(row, "nventures relevance"), "no"), st[1], runs); err == nil {
+		if err := r.env.Store.MergePartner(r.ctx, name, PartnerSite(func(k string) string { return cell(row, k) }), !strings.EqualFold(cell(row, "nventures relevance"), "no"), st[1], runs, cell(row, "contact")); err == nil {
 			n++
 		}
 	}
@@ -206,6 +208,9 @@ func (r *run) outboundRun(p map[string]any) {
 					r.audit("error", partner.Name+": internal error; continuing with the next partner", nil)
 				}
 			}()
+			if partner.Website == "" {
+				r.findPartnerSite(&partner)
+			}
 			rep := r.env.Crawler.DiscoverPartner(r.ctx, partner.Name, partner.Website)
 			r.inc("pages_visited", rep.PagesVisited)
 			r.inc("candidates_found", len(rep.Candidates))
@@ -246,6 +251,35 @@ func (r *run) outboundRun(p map[string]any) {
 		msg += " · target not reached: no further eligible companies were evidenced (qualification was not relaxed)"
 	}
 	r.finish(status, msg)
+}
+
+// siteRetryAfter is how long a failed website lookup is remembered, so each
+// run doesn't repeat the same guesses for a partner with no findable site.
+const siteRetryAfter = 7 * 24 * time.Hour
+
+// findPartnerSite looks up a missing partner website and stores the result
+// as "found, please confirm". The partner list in the sheet is not changed.
+func (r *run) findPartnerSite(p *store.Partner) {
+	if r.env.Sites == nil {
+		return
+	}
+	if t, err := time.Parse(time.RFC3339Nano, p.SiteCheckedAt); err == nil && time.Since(t) < siteRetryAfter {
+		r.audit("partner", p.Name+": no website (last lookup found none; next try after "+t.Add(siteRetryAfter).Format("2 Jan")+")", nil)
+		return
+	}
+	r.save(r.progress, "Looking up a website for "+p.Name)
+	ctx, cancel := context.WithTimeout(r.ctx, 90*time.Second) // slow guessed domains can't stall the run
+	defer cancel()
+	res := r.env.Sites(ctx).Find(ctx, p.Name, p.ContactHint)
+	_ = r.env.Store.SetPartnerSite(r.ctx, p.ID, res.URL, res.Source, res.Note)
+	if res.URL == "" {
+		r.inc("partner_sites_missing", 1)
+		r.audit("warning", fmt.Sprintf("%s: %s (%d addresses checked)", p.Name, res.Note, len(res.Tried)), res)
+		return
+	}
+	p.Website, p.WebsiteSource = res.URL, res.Source
+	r.inc("partner_sites_found", 1)
+	r.audit("partner", fmt.Sprintf("%s: website found — %s (%s). Confirm it on the Partners page.", p.Name, res.URL, res.Note), res)
 }
 
 func warnSuffix(w []string) string {
