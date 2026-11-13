@@ -30,7 +30,7 @@ export async function renderSettings(main, params) {
   const upload = async () => { const f = fileIn.files[0]; if (!f) { toast('Choose the downloaded client JSON file', 'bad'); return; } try { await api('/api/google/client', { method: 'POST', body: { json: await f.text() } }); toast('Client stored locally'); app.route(); } catch (e) { toast(e.message, 'bad'); } };
   const connectBtn = h('a', { class: 'btn primary', href: '/oauth/start' }, g.connected ? 'Reconnect Google' : 'Connect Google');
   if (!g.client_configured) disabledReason(connectBtn, 'Upload the OAuth client JSON first.');
-  const googlePanel = h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Google connection'), h('p', {}, 'One local OAuth connection: Gmail read-only + Sheets. Tokens stay in your data folder with user-only permissions.'))),
+  const googlePanel = h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Google connection'), h('p', {}, 'Read-only Gmail and your Google Sheets. Stays on this computer.'))),
     h('div', { class: 'panel-body form' },
       msg === 'connected' ? h('p', { class: 'note ok', role: 'status' }, 'Google connected.') : msg === 'error' ? h('p', { class: 'note bad', role: 'alert' }, params.get('message') || 'Connection failed') : null,
       h('ul', { class: 'ready-list' },

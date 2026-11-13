@@ -14,7 +14,7 @@ export async function renderPartners(main) {
   const list = h('section', { class: 'panel' });
   async function load() {
     const ps = await api('/api/partners');
-    list.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Rotation order'), h('p', {}, 'Least recently sourced first. Counts and last-visit state persist across restarts and are mirrored to the control tab when syncing.')),
+    list.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Rotation'), h('p', {}, 'Least recently visited first.')),
         h('div', { class: 'actions' }, h('a', { class: 'btn ghost', href: '/api/partners/export.csv', download: '', title: 'Websites found or entered in nVentures that your partner list doesn\'t have yet. Paste them into the Company Portfolio column; nVentures never edits the partner list itself.' }, icon('download'), 'Websites for the sheet (CSV)'))),
       ps.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Partner'), h('th', { class: 'hide-mobile' }, 'Website'), h('th', { class: 'tight' }, 'Runs'), h('th', { class: 'tight hide-mobile' }, 'Last added'), h('th', { class: 'tight hide-mobile' }, 'Last visit'), h('th', { class: 'tight' }, 'In rotation'))),
         h('tbody', {}, ps.map((p) => { const rep = parse(p.last_report); return h('tr', { onclick: (e) => { if (!e.target.closest('input,button,a')) openPartner(p, load); } },
@@ -27,7 +27,7 @@ export async function renderPartners(main) {
   const site = h('input', { type: 'url', placeholder: 'https://partner.example', maxlength: 500 });
   const form = h('form', { class: 'panel-body form', novalidate: true, onsubmit: async (e) => { e.preventDefault(); clearErrors({ name, site }); if (name.value.trim().length < 2) { fieldError(name, 'Enter the partner name (at least 2 characters).'); name.focus(); return; } if (site.value.trim() && !/^(https?:\/\/)?[^\s.]+\.[^\s]+$/i.test(site.value.trim())) { fieldError(site, 'Enter a web address such as https://partner.example'); site.focus(); return; } try { await api('/api/partners', { method: 'POST', body: { name: name.value, website: site.value } }); name.value = site.value = ''; toast('Partner added'); load(); } catch (err) { toast(err.message, 'bad'); } } },
     h('div', { class: 'field-row' }, h('label', {}, 'Partner name', name), h('label', {}, 'Official website', site)), h('div', { class: 'actions' }, need(h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add partner'), 'partners.edit')));
-  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Portfolio partners'), h('p', {}, 'The crawler starts from each partner’s official site, follows portfolio pages, sitemaps and feeds, and collects official company links.'))),
+  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Partners'), h('p', {}, 'Funds whose portfolios we read for new companies.'))),
     list, h('section', { class: 'panel', style: 'margin-top:16px' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Add a partner')), form));
   app.keys = null;
   await load();

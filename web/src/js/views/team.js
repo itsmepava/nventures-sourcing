@@ -56,7 +56,7 @@ export async function renderTeam(main) {
   h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add member')));
 
   main.replaceChildren(
-    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Team'), h('p', {}, 'Everyone signs in with their own account. Roles decide what each person can do; every action is recorded in Activity with their name.'))),
+    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Team'), h('p', {}, 'Who can use nVentures, and what each role can do.'))),
     h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Members')), table),
     h('div', { class: 'grid cols-2', style: 'margin-top:16px' },
       h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Add a member')), form),

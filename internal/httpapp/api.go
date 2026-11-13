@@ -68,7 +68,47 @@ func (a *App) dashboard(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	jobsList, _ := a.Store.Jobs(ctx, "", 8)
-	events, _ := a.Store.Events(ctx, 0, "", 0, 12)
+	all, _ := a.Store.Events(ctx, 0, "", 0, 40)
+	events := all[:0]
+	for _, e := range all { // the home page shows work, not sign-ins or per-partner crawl lines
+		if e.Kind != "signed_in" && e.Kind != "signed_out" && e.Kind != "partner" && len(events) < 8 {
+			events = append(events, e)
+		}
+	}
+	// Home page: pitches received in the last 7 days and the few that need a person.
+	var week int
+	since := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pitches WHERE COALESCE(NULLIF(received_at,''), created_at) >= ?`, since).Scan(&week)
+	type attention struct {
+		ID       int64  `json:"id"`
+		Name     string `json:"name"`
+		From     string `json:"from"`
+		Reason   string `json:"reason"`
+		Received string `json:"received_at"`
+		Status   string `json:"status"`
+	}
+	att := []attention{}
+	if rows, err := db.QueryContext(ctx, `SELECT id, name, status, received_at, data FROM pitches WHERE status IN ('review','error','uncertain','conflict') ORDER BY COALESCE(NULLIF(received_at,''), created_at) DESC LIMIT 5`); err == nil {
+		for rows.Next() {
+			var x attention
+			var data string
+			if rows.Scan(&x.ID, &x.Name, &x.Status, &x.Received, &data) == nil {
+				var d extract.Pitch
+				_ = json.Unmarshal([]byte(data), &d)
+				x.From = firstNonEmpty(d.Contact, d.ReplyTo, d.Sender)
+				if len(d.Reasons) > 0 {
+					x.Reason = d.Reasons[len(d.Reasons)-1]
+				}
+				att = append(att, x)
+			}
+		}
+		rows.Close()
+	}
+	out["pitches_week"] = week
+	var total int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pitches WHERE status NOT IN ('skipped','duplicate')`).Scan(&total)
+	out["pitches_received"] = total
+	out["attention"] = att
 	out["companies"] = map[string]int{"total": companies, "verified": verified, "starred": starred, "pending_sync": pending}
 	out["partners"] = map[string]int{"total": partners, "relevant": relevant}
 	out["by_country"] = byCountry

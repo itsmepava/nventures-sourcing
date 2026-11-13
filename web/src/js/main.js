@@ -61,7 +61,7 @@ async function boot() {
   let st;
   try { st = await api('/api/auth/state'); } catch (e) { showAuth({ error: e.message }); return; }
   $('#version').textContent = `v${st.version} · localhost`;
-  const mb = $('#mode-badge'); mb.hidden = false; mb.textContent = st.mode === 'demo' ? 'Demo data' : 'Live'; mb.classList.toggle('live', st.mode === 'live');
+  const mb = $('#mode-badge'); mb.hidden = false; mb.textContent = st.mode === 'demo' ? 'Demo' : 'Live'; mb.classList.toggle('live', st.mode === 'live');
   if (st.setup_needed) return showAuth({ setup: true, mode: st.mode });
   if (!st.user) return showAuth({ mode: st.mode });
   await enterWorkspace();

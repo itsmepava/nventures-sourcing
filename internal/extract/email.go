@@ -535,7 +535,7 @@ func classify(p *Pitch, in Input, isReply bool) {
 		// or stage (the inbound funnel stays broad).
 		if gaps := FocusGaps(*p); len(gaps) > 0 {
 			ready = false
-			p.Reasons = append(p.Reasons, "Not added automatically: "+strings.Join(gaps, "; "))
+			p.Reasons = append(p.Reasons, "Not auto-added: "+strings.Join(gaps, " · "))
 		}
 	}
 	if ready {
@@ -559,16 +559,16 @@ var (
 func FocusGaps(p Pitch) []string {
 	var gaps []string
 	if strings.TrimSpace(p.Website) == "" {
-		gaps = append(gaps, "no website stated")
+		gaps = append(gaps, "no website")
 	}
 	if strings.TrimSpace(p.HQ) == "" {
-		gaps = append(gaps, "HQ not stated (incorporation country doesn't count)")
+		gaps = append(gaps, "no HQ stated")
 	} else if !HQInFocus(p.HQ) {
-		gaps = append(gaps, "HQ outside South Asia/Singapore ("+p.HQ+")")
+		gaps = append(gaps, "HQ outside focus ("+p.HQ+")")
 	}
 	b2b := b2bSectorRe.MatchString(p.Sector) || (b2bRe.MatchString(p.Description) && !b2cRe.MatchString(p.Description))
 	if !b2b && !earlyStageRe.MatchString(p.Stage) {
-		gaps = append(gaps, "no B2B focus or pre-seed/seed stage stated")
+		gaps = append(gaps, "no B2B or pre-seed/seed signal")
 	}
 	return gaps
 }

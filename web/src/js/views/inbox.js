@@ -1,6 +1,6 @@
 // ---------- inbox ----------
 import { JobWatcher, STAGES, intakeStatus, dataTable, disabledReason, draftReply, memberName, notesSection, qs, relatedSection, rowLink, stageName, starButton, startJob, team, workflowSection } from '../components.js';
-import { $, STATUS, api, app, badge, can, clearErrors, fieldError, fmtDate, h, icon, loadState, need, openOverlay, parse, prefs, roleReason, toast } from '../core.js';
+import { $, STATUS, api, app, badge, shortDate, can, clearErrors, fieldError, fmtDate, h, icon, loadState, need, openOverlay, parse, prefs, roleReason, toast } from '../core.js';
 
 export async function renderInbox(main, params) {
   const r = app.state.readiness;
@@ -19,10 +19,10 @@ export async function renderInbox(main, params) {
     columns: [
       { label: '', cls: 'tight', render: (p, reload) => starButton('pitches', p, reload) },
       { label: 'Company', sort: 'name', render: (p) => { const d = parse(p.data); return [h('div', { class: 'cell-main' }, p.name || h('span', { class: 'muted' }, 'Name not stated'), d.name_guessed ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, 'name guessed') : null), h('div', { class: 'cell-sub' }, d.description || '')]; } },
-      { label: 'Contact', cls: 'hide-mobile', render: (p) => { const d = parse(p.data); return [h('div', {}, d.contact || '—'), d.contact_source ? h('div', { class: 'cell-sub' }, 'from ' + d.contact_source) : null]; } },
-      { label: 'Signals', cls: 'tight hide-mobile', render: (p) => { const d = parse(p.data); return h('div', { class: 'actions' }, d.structured ? h('span', { class: 'badge' }, 'form') : h('span', { class: 'badge warn' }, 'direct'), (d.attachments || []).length ? h('span', { class: 'badge', title: 'Attachments — PDF/PPTX decks can be read from the review panel' }, icon('paperclip'), d.attachments.length) : null, (d.deck_links || []).length ? h('span', { class: 'badge', title: 'Deck links are not reviewed automatically' }, 'deck') : null); } },
-      { label: 'Team', cls: 'tight hide-mobile', render: (p) => [h('div', {}, stageName('pitch', p.stage)), h('div', { class: 'cell-sub' }, p.assignee_id ? memberName(p.assignee_id) : 'Unassigned', p.follow_up_at ? ' · ' + p.follow_up_at : '')] },
-      { label: 'Received', sort: 'received', cls: 'tight hide-mobile', render: (p) => fmtDate(p.received_at) },
+      { label: 'Contact', cls: 'hide-mobile', render: (p) => { const d = parse(p.data); return h('span', { class: 'cell-clip', title: d.contact_source ? 'From ' + d.contact_source : null }, d.contact || '—'); } },
+      { label: '', cls: 'tight hide-mobile', render: (p) => { const d = parse(p.data); const n = (d.attachments || []).length; return n || (d.deck_links || []).length ? h('span', { class: 'signal', title: n ? `${n} attachment(s) — decks can be read in the review panel` : 'Deck link' }, icon('paperclip'), n || '') : null; } },
+      { label: 'Owner', cls: 'tight hide-mobile', render: (p) => p.assignee_id || p.stage !== 'new' ? [h('div', {}, p.assignee_id ? memberName(p.assignee_id) : '—'), p.stage !== 'new' ? h('div', { class: 'cell-sub' }, stageName('pitch', p.stage), p.follow_up_at ? ' · ' + p.follow_up_at : '') : null] : h('span', { class: 'muted' }, '—') },
+      { label: 'Received', sort: 'received', cls: 'tight hide-mobile', render: (p) => h('span', { title: fmtDate(p.received_at) }, shortDate(p.received_at)) },
       { label: 'Status', sort: 'status', cls: 'tight', render: (p) => badge(p.status) },
     ],
     onOpen: (p, reload) => openPitch(p.id, () => { reload(); loadState(); }),

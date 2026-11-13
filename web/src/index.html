@@ -24,8 +24,7 @@
       <img class="logo logo-light" src="/assets/brand/logo.png" alt="nVentures" width="160" height="49">
       <img class="logo logo-dark" src="/assets/brand/logo-dark.png" alt="" width="160" height="49" aria-hidden="true">
     </a>
-    <p class="brand-sub">Workspace</p>
-    <nav>
+        <nav>
       <a href="#/" data-nav="dashboard"><svg aria-hidden="true"><use href="#i-home"/></svg>Overview</a>
       <a href="#/queue" data-nav="queue"><svg aria-hidden="true"><use href="#i-check"/></svg>My work<span class="count" id="nav-queue-count" hidden></span></a>
       <a href="#/inbox" data-nav="inbox"><svg aria-hidden="true"><use href="#i-inbox"/></svg>Pitch inbox<span class="count" id="nav-inbox-count" hidden></span></a>
@@ -37,10 +36,6 @@
       <a href="#/settings" data-nav="settings"><svg aria-hidden="true"><use href="#i-gear"/></svg>Settings</a>
     </nav>
     <div class="sidebar-foot">
-      <div class="mandate-mini">
-        <b>Outbound mandate</b>
-        <p>HQ in South Asia or Singapore · B2B · bootstrapped to seed · total funding ≤ $3M, all evidenced.</p>
-      </div>
       <p class="version" id="version">localhost</p>
     </div>
   </aside>
@@ -50,8 +45,8 @@
       <h1 id="page-title">Overview</h1>
       <span class="mode-badge" id="mode-badge" hidden></span>
       <div class="top-actions">
-        <button class="btn ghost" id="palette-btn" aria-keyshortcuts="Control+K"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="hide-sm">Commands</span><kbd class="hide-sm">Ctrl K</kbd></button>
-        <button class="btn ghost theme-btn" id="theme-btn" aria-label="Theme: system. Click to change." aria-keyshortcuts="t"><svg aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-label" class="hide-sm">System</span></button>
+        <button class="btn ghost" id="palette-btn" title="Commands (Ctrl K)" aria-keyshortcuts="Control+K"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Commands (Ctrl K)</span></button>
+        <button class="btn ghost theme-btn" id="theme-btn" aria-label="Theme: system. Click to change." aria-keyshortcuts="t"><svg aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-label" class="sr-only">System</span></button>
         <button class="icon-btn bell" id="bell-btn" aria-label="Notifications" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#i-bell"/></svg><span class="bell-dot" id="bell-count" hidden></span></button>
         <button class="account-btn" id="account-btn" aria-haspopup="dialog" aria-label="Account"><span class="avatar" id="avatar" aria-hidden="true">·</span><span class="hide-sm account-name" id="account-name"></span></button>
       </div>

@@ -14,7 +14,7 @@ export async function renderActivity(main, params) {
   const auditKind = h('select', { 'aria-label': 'Event type', onchange: () => loadAudit() }, h('option', { value: '' }, 'All events'), ['accepted', 'rejected', 'needs_research', 'duplicate', 'sync', 'sync_error', 'inbox_review', 'error', 'warning', 'partner', 'settings', 'google_connected', 'migration', 'interrupted'].map((k) => h('option', { value: k }, k.replace(/_/g, ' '))));
   const audit = h('section', { class: 'panel', style: 'margin-top:16px' });
   async function loadAudit() { const ev = await api('/api/events?limit=300' + (auditKind.value ? '&kind=' + auditKind.value : '')); audit.replaceChildren(h('div', { class: 'panel-head' }, h('h2', {}, 'Audit log'), auditKind), ev.length ? eventList(ev) : h('div', { class: 'empty' }, 'No events.')); }
-  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Progress & history'), h('p', {}, 'Every job keeps its progress, counters and events. Interrupted jobs are marked honestly after a restart; saved work is never discarded.'))), jobsPanel, audit);
+  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Activity'), h('p', {}, 'Every run and change, with who did it.'))), jobsPanel, audit);
   app.keys = null;
   await Promise.all([loadJobs(), loadAudit()]);
   if (params.get('job')) openJob(Number(params.get('job')));

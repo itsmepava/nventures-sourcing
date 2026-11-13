@@ -10,7 +10,7 @@ export async function renderSourcing(main, params) {
   need(runBtn, 'sourcing.run');
   if (!can('sourcing.sync')) need(syncBtn, 'sourcing.sync'); else if (!r.outbound.ready) disabledReason(syncBtn, r.outbound.sheet_set ? 'Enable outbound sheet writing and connect Google in Settings.' : 'Set the outbound sheet in Settings first.');
   const urls = h('textarea', { rows: 3, placeholder: 'https://company.example\nhttps://another.example', 'aria-label': 'Company URLs, one per line' });
-  const manual = h('section', { class: 'panel', style: 'margin-bottom:16px' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Research specific companies'), h('p', {}, 'For JavaScript-only or blocked portfolios: paste official company URLs. The same evidence rules apply.'))),
+  const manual = h('section', { class: 'panel', style: 'margin-bottom:16px' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Research specific companies'), h('p', {}, 'Paste company websites to check them against the same rules.'))),
     h('div', { class: 'panel-body form' }, urls, h('div', { class: 'actions' }, need(h('button', { class: 'btn', onclick: async () => { const list = urls.value.split(/\s+/).map((x) => x.trim()).filter(Boolean); if (!list.length) { toast('Paste at least one URL', 'bad'); return; } if (await startJob('/api/sourcing/research', { urls: list }, jobsMount, () => cands.reload())) urls.value = ''; } }, 'Research URLs'), 'sourcing.run'))));
   const cands = h('section', { class: 'panel' });
   const outcomeTabs = h('div', { class: 'tabs', role: 'group', 'aria-label': 'Filter outcomes' });
@@ -18,13 +18,14 @@ export async function renderSourcing(main, params) {
   async function loadCands() {
     const items = await api('/api/candidates?limit=300' + (outcome ? '&outcome=' + outcome : ''));
     outcomeTabs.replaceChildren(...[['', 'All'], ['accepted', 'Accepted'], ['needs_research', 'Needs research'], ['rejected', 'Rejected'], ['duplicate', 'Duplicates']].map(([v, l]) => h('button', { 'aria-pressed': String(outcome === v), onclick: () => { outcome = v; prefs.set('cand_outcome', v); loadCands(); } }, l)));
-    cands.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Research outcomes'), h('p', {}, 'Every company researched, with the deterministic reasons for its outcome.')), outcomeTabs),
+    cands.replaceChildren(h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Outcomes'), h('p', {}, 'Every company checked, and why.')), outcomeTabs),
       items.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Company'), h('th', { class: 'hide-mobile' }, 'Partner'), h('th', {}, 'Outcome'), h('th', { class: 'hide-mobile' }, 'Reasons'), h('th', { class: 'tight hide-mobile' }, 'When'))),
-        h('tbody', {}, items.map((c) => h('tr', { onclick: () => openCandidate(c) }, h('td', {}, h('div', { class: 'cell-main' }, c.name), h('div', { class: 'cell-sub' }, c.url)), h('td', { class: 'hide-mobile' }, c.partner), h('td', { class: 'tight' }, badge(c.outcome)), h('td', { class: 'hide-mobile' }, h('div', { class: 'cell-sub' }, c.reasons.join('; ') || (c.outcome === 'accepted' ? 'All hard requirements evidenced' : ''))), h('td', { class: 'tight hide-mobile' }, fmtDate(c.created_at))))))) : h('div', { class: 'empty' }, h('b', {}, 'No research yet'), 'Start a sourcing run to crawl partner portfolios.'));
+        h('tbody', {}, items.map((c) => h('tr', { onclick: () => openCandidate(c) }, h('td', {}, h('div', { class: 'cell-main' }, c.name), h('div', { class: 'cell-sub' }, hostOf(c.url))), h('td', { class: 'hide-mobile' }, c.partner), h('td', { class: 'tight' }, badge(c.outcome)), h('td', { class: 'hide-mobile' }, h('div', { class: 'cell-sub' }, c.reasons.join('; ') || (c.outcome === 'accepted' ? 'All hard requirements evidenced' : ''))), h('td', { class: 'tight hide-mobile' }, fmtDate(c.created_at))))))) : h('div', { class: 'empty' }, h('b', {}, 'No research yet'), 'Start a sourcing run to crawl partner portfolios.'));
   }
   cands.reload = loadCands;
   main.replaceChildren(
-    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Proactive sourcing'), h('p', {}, 'Partners are visited in fair rotation. Their portfolio pages and company sites are crawled directly (robots.txt respected, private addresses refused). A company is accepted only when its own pages evidence every requirement; targets never relax the mandate.')),
+    h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Sourcing'), h('p', {}, 'We read partner portfolios and each company\'s own website. A company is accepted only when its pages show every requirement:'),
+        h('div', { class: 'chips' }, ['HQ in South Asia or Singapore', 'B2B', 'Bootstrapped to seed', 'Total funding ≤ $3M'].map((t) => h('span', { class: 'chip' }, t)))),
       h('div', { class: 'actions' }, runBtn, syncBtn)),
     jobsMount, manual, cands);
   await loadCands();
@@ -60,3 +61,5 @@ export function openCandidate(c) {
   const d = openOverlay({ title: c.name, sub: `${c.partner} · ${STATUS[c.outcome]?.[0] || c.outcome}`, body, foot });
 }
 
+
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u || ''; } };

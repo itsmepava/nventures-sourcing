@@ -75,6 +75,6 @@ export function schedulesPanel() {
   h('p', { class: 'hint' }, r.google.connected ? 'Scheduled runs use the same rules as manual ones and never relax the mandate.' : 'Inbox imports are skipped until Google is connected; sourcing runs work now.'),
   h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add schedule')));
   load().catch((e) => list.replaceChildren(h('p', { class: 'note bad' }, e.message)));
-  return h('section', { class: 'panel', style: 'margin-top:16px' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Automation'), h('p', {}, 'Runs while the app is open on this computer. Admins and the relevant role are notified of each result.'))),
+  return h('section', { class: 'panel', style: 'margin-top:16px' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, 'Automation'), h('p', {}, 'Scheduled runs while the app is open.'))),
     list, h('div', { class: 'subpanel' }, h('h3', {}, 'Add a schedule'), form));
 }

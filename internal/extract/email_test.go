@@ -86,7 +86,7 @@ func TestIncorporationIsNotHQAndNoInferredFunding(t *testing.T) {
 	p := extract.Extract(extract.Input{Text: "Company name: Polar Labs\nWebsite: https://polar.example\nCountry of incorporation: Canada\nStage: Series A\nOne line on what you do: Consumer software startup building a new way to share creative projects. Raising $9 million.\nContact email: founder@polar.example"})
 	// Complete, but incorporation isn't HQ: it waits in review, and the only
 	// reason is the focus check (nothing about it is rejected).
-	if p.Status != "review" || p.HQ != "" || !strings.Contains(p.Notes, "Canada") || p.Name != "Polar Labs" || len(p.Reasons) != 1 || !strings.Contains(p.Reasons[0], "HQ not stated") {
+	if p.Status != "review" || p.HQ != "" || !strings.Contains(p.Notes, "Canada") || p.Name != "Polar Labs" || len(p.Reasons) != 1 || !strings.Contains(p.Reasons[0], "no HQ stated") {
 		t.Fatalf("%+v", p)
 	}
 	q := byID()["demo-m09"]
@@ -140,11 +140,11 @@ func TestPromisingRule(t *testing.T) {
 		{base + "Invoice automation for small and medium businesses in the region.\nHeadquarters: Colombo, Sri Lanka\nStage: Seed", "ready", "Colombo, Sri Lanka", ""},
 		// The sender's own HQ sentence counts; markets do not.
 		{base + "We're headquartered in Dhaka, Bangladesh and sell to garment exporters.\nStage: Pre-seed", "ready", "Dhaka, Bangladesh", ""},
-		{base + "Software for garment exporters in Bangladesh.\nStage: Pre-seed", "review", "", "HQ not stated"},
-		{base + "A consumer app for planning weekend trips with friends.\nHeadquarters: Austin, USA\nStage: Seed", "review", "Austin, USA", "HQ outside South Asia/Singapore"},
-		{base + "A photo-sharing app for teenagers and their families.\nHeadquarters: Singapore\nStage: Series B", "review", "Singapore", "no B2B focus or pre-seed/seed stage"},
+		{base + "Software for garment exporters in Bangladesh.\nStage: Pre-seed", "review", "", "no HQ stated"},
+		{base + "A consumer app for planning weekend trips with friends.\nHeadquarters: Austin, USA\nStage: Seed", "review", "Austin, USA", "HQ outside focus"},
+		{base + "A photo-sharing app for teenagers and their families.\nHeadquarters: Singapore\nStage: Series B", "review", "Singapore", "no B2B or pre-seed/seed signal"},
 		{base + "Scheduling SaaS for independent clinics and pharmacies.\nSector: B2B SaaS\nHeadquarters: Kathmandu, Nepal\nStage: Series A", "ready", "Kathmandu, Nepal", ""},
-		{"Company name: NoSite\nContact email: a@nosite.example\nOne line on what you do: Payments and payouts for SMEs across India and Nepal.\nHeadquarters: Pune, India\nStage: Seed", "review", "Pune, India", "no website stated"},
+		{"Company name: NoSite\nContact email: a@nosite.example\nOne line on what you do: Payments and payouts for SMEs across India and Nepal.\nHeadquarters: Pune, India\nStage: Seed", "review", "Pune, India", "no website"},
 	}
 	for _, c := range cases {
 		p := extract.Extract(extract.Input{Text: c.text})

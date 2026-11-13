@@ -11,12 +11,12 @@ export async function renderCompanies(main, params) {
     fetchPage: async (st) => api('/api/companies?' + qs({ ...st, status: st.filters.status || '' }, {})),
     columns: [
       { label: '', cls: 'tight', render: (c, reload) => starButton('companies', c, reload) },
-      { label: 'Company', sort: 'name', render: (c) => { const d = parse(c.data); return [h('div', { class: 'cell-main' }, c.name), h('div', { class: 'cell-sub' }, d.description || d.website || '')]; } },
+      { label: 'Company', sort: 'name', render: (c) => { const d = parse(c.data); return [h('div', { class: 'cell-main' }, c.name), h('div', { class: 'cell-sub clamp' }, d.description || d.website || '')]; } },
       { label: 'HQ', sort: 'country', cls: 'tight', render: (c) => parse(c.data).hq_country || '—' },
       { label: 'Stage', cls: 'tight hide-mobile', render: (c) => parse(c.data).stage || '—' },
       { label: 'Funding', sort: 'funding', cls: 'tight hide-mobile', render: (c) => fmtUSD(parse(c.data).total_funding_usd) },
       { label: 'Partner', sort: 'partner', cls: 'hide-mobile', render: (c) => c.partner },
-      { label: 'Team', cls: 'tight hide-mobile', render: (c) => [h('div', {}, stageName('company', c.stage)), h('div', { class: 'cell-sub' }, c.assignee_id ? memberName(c.assignee_id) : 'Unassigned', c.follow_up_at ? ' · ' + c.follow_up_at : '')] },
+      { label: 'Owner', cls: 'tight hide-mobile', render: (c) => !c.assignee_id && c.stage === 'not_contacted' ? h('span', { class: 'muted' }, '—') : [h('div', {}, c.assignee_id ? memberName(c.assignee_id) : '—'), h('div', { class: 'cell-sub' }, stageName('company', c.stage), c.follow_up_at ? ' · ' + c.follow_up_at : '')] },
       { label: 'Sheet', sort: 'sync', cls: 'tight', render: (c) => [badge(c.sync_status), c.sheet_row ? (c.sheet_url ? h('a', { class: 'cell-sub row-link', href: c.sheet_url, target: '_blank', rel: 'noopener noreferrer', title: 'Open the sheet row' }, 'row ' + c.sheet_row) : h('div', { class: 'cell-sub' }, 'row ' + c.sheet_row)) : null] },
     ],
     onOpen: (c, reload) => openCompany(c.id, reload),
@@ -26,7 +26,7 @@ export async function renderCompanies(main, params) {
   const exportLink = h('a', { class: 'btn ghost', href: '/api/companies/export.csv', download: '' }, icon('download'), 'CSV');
   exportLink.title = 'Exports the companies matching the current search and filters';
   exportLink.addEventListener('click', () => { exportLink.href = '/api/companies/export.csv?' + qs({ ...table.state, status: table.state.filters.status || '' }); });
-  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Sourced companies'), h('p', {}, 'Companies accepted against the outbound mandate, with their evidence. CSV exports neutralise formula-like cells.')), h('div', { class: 'actions' }, exportLink)), jobsMount, table);
+  main.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, 'Companies'), h('p', {}, 'Every company accepted by sourcing, with the evidence behind it.')), h('div', { class: 'actions' }, exportLink)), jobsMount, table);
   app.keys = table.keys; app.jobsMount = jobsMount; app.reloadPage = () => table.reload();
   await team().catch(() => {});
   if (params.get('company')) openCompany(Number(params.get('company')), () => table.reload());

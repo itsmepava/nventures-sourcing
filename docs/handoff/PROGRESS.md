@@ -131,6 +131,23 @@ Verified:
 
 ## Latest checkpoint
 
+13 Nov 2026 (cloud, end of day, Friday): checkpoint pushed on `claude/go-redesign-b8xpo1`. Since the previous entry:
+- Partner website finder plus a CSV of found websites for the sheet.
+- Automatic Gmail intake every 5 minutes. Only promising pitches are auto-added (complete + stated South Asia/Singapore HQ + B2B or pre-seed/seed); the rest go to review. Names are never guessed.
+- A new home page.
+- The UI declutter pass: shell, page intros, tables, phone layout.
+
+User decisions recorded: review items stay in the app only (no Review tab in the sheet); "promising" = complete + fits focus; 5-minute interval.
+
+Verified: `go vet`, `go test ./...`, `-race` (httpapp/jobs) and rehearse all pass (rehearse now reports 3 auto-added / 9 review). Screenshot audit of 9 pages at 1440 px light and 390 px dark found no overlap or overflow; QA used the demo data dir in the cloud scratchpad.
+
+**Next session (Monday):**
+1. The user connects Google (docs/SETUP-LIVE.md Part C/D) and adds a "Headquarters" question to their pitch form.
+2. Live test connection, first auto-intake, deck read, sourcing run with sheet writes. Fix whatever surfaces.
+3. Then tag v0.5.0-beta.1; publish a prerelease only if the user asks.
+
+Open UI items: the inbox drawer and settings page weren't re-designed in this pass (only shortened); consider a further calm pass on the review drawer.
+
 13 Nov 2026 (cloud, later): v0.5.0-alpha.1 committed and pushed on `claude/go-redesign-b8xpo1`, and release artifacts were built and verified locally in the cloud container (`release/` is git-ignored). **Not published**: no GitHub prerelease exists for 0.4.0-alpha.1 or 0.5.0-alpha.1. Publish only on the user's explicit request (`VERSION=0.5.0-alpha.1 sh scripts/build_release.sh` at the release commit; attach every file in `release/v0.5.0-alpha.1`). Next: live Google connection (External setup above), then a small live import including one deck read.
 
 13 Nov 2026 (cloud session): re-verified on Go 1.27.4 in a Claude Code cloud container on branch `claude/go-redesign-b8xpo1` (from `9f4ebeb`). `go vet ./...` clean; `go test -count=1 ./...` all packages pass; race tests for httpapp/jobs/store/discovery pass; `go run ./cmd/nventures rehearse` prints PASS. One fix: `TestSSRFProtections` assumed the host resolver answers `localhost.`; the cloud sandbox resolver answers nothing, so that one DNS-loopback sub-check now runs only when the resolver can answer it. The dial-time private-address guard is still covered by the redirect-to-127.0.0.1 case, and the fetcher still ignores environment proxies. Correction to the entry below: the **v0.4.0-alpha.1 GitHub prerelease is not published**. The latest published release is v0.3.0-alpha.2. Creating the prerelease was blocked by the permission checker, so publish only on explicit request: `VERSION=0.4.0-alpha.1 sh scripts/build_release.sh`, target `9f4ebeb` or later.

@@ -12,6 +12,14 @@ Builds on v0.4.0-alpha.1 (team workspace MVP). The v0.4.0-alpha.1 prerelease was
 - Every reading is audited (file name, status and page count, never the deck's contents) and attributed to the person who asked for it. Reading again replaces the previous reading.
 - **Demo and rehearsal.** The demo mailbox now includes a generated PDF deck (Tidewell) and PPTX deck (Byte Bazaar). `nventures rehearse` reads the Tidewell deck and approves the pitch using the HQ evidenced on page 2.
 
+## Automatic intake and a calmer UI
+
+- **Gmail is checked every 5 minutes** while the app runs (on by default, Settings switch). An import starts only when there are new messages; one notification per batch.
+- **Only promising pitches go to the sheet automatically**: complete, with a stated HQ in South Asia/Singapore and a B2B focus or pre-seed/seed stage. The rest wait in *Needs review* with a short reason.
+- **Company names are never guessed** from subjects or senders.
+- **New home page**: greeting, four key numbers, *Needs your attention*, pipeline and recent activity; setup steps appear only while something isn't set up.
+- **Decluttered UI**: icon-only top bar, demo notice moved to the badge, shorter page introductions, quieter tables, stacked rows on phones, no focus frame around the page.
+
 ## Partners without a website
 
 - Partner lists can use a **`Company Portfolio`** column (a link to the fund's portfolio page) instead of `Website`. A deep link is treated as the company list itself.

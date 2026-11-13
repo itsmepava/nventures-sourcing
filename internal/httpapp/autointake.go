@@ -3,7 +3,6 @@ package httpapp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -94,11 +93,11 @@ func (a *App) checkNewPitches(ctx context.Context) (string, bool) {
 	case err != nil:
 		return "could not start the import: " + err.Error(), true
 	}
-	plus := ""
-	if n == len(refs) {
-		plus = "+"
+	_ = j
+	if n == 1 {
+		return "1 new email, importing it now", false
 	}
-	return fmt.Sprintf("%d%s new message(s); import #%d started", n, plus, j.ID), false
+	return "new emails found, importing them now", false
 }
 
 func (a *App) hasClientFile() bool {

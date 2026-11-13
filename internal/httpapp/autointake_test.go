@@ -29,7 +29,7 @@ func TestAutoIntake(t *testing.T) {
 	if js[0].Counters["verified"] != float64(3) || js[0].Counters["review"] != float64(9) {
 		t.Errorf("counters: %v", js[0].Counters)
 	}
-	if !strings.Contains(a.Store.GetSetting(ctx, "state.auto_intake_result", ""), "import #") {
+	if !strings.Contains(a.Store.GetSetting(ctx, "state.auto_intake_result", ""), "importing") {
 		t.Errorf("result: %q", a.Store.GetSetting(ctx, "state.auto_intake_result", ""))
 	}
 	n := decode(t, do(t, responder, "GET", srv.URL+"/api/notifications", nil, ""))

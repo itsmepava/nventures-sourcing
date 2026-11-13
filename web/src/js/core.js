@@ -85,6 +85,7 @@ window.addEventListener('offline', () => setOffline(true));
 // ---------- formatting ----------
 export const fmtDate = (s) => { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); };
 export const ago = (s) => { const d = new Date(s); if (!s || isNaN(d)) return 'never'; const m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : fmtDate(s); };
+export const shortDate = (s) => { const d = new Date(s); if (!s || isNaN(d)) return '—'; const sameYear = d.getFullYear() === new Date().getFullYear(); return d.toLocaleDateString(undefined, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }); };
 export const fmtTime = (s) => { const d = new Date(s); return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
 export const fmtUSD = (n) => (n === null || n === undefined || n === '') ? 'Unknown' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 export const parse = (v) => { if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } } return v || {}; };
@@ -110,7 +111,7 @@ export function applyTheme(pref) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.dataset.themePref = pref;
   const b = $('#theme-btn');
-  if (b) { b.setAttribute('aria-label', `Theme: ${pref}${pref === 'system' ? ' (' + (dark ? 'dark' : 'light') + ')' : ''}. Click to change.`); const l = $('#theme-label'); if (l) l.textContent = pref[0].toUpperCase() + pref.slice(1); }
+  if (b) { b.setAttribute('aria-label', `Theme: ${pref}${pref === 'system' ? ' (' + (dark ? 'dark' : 'light') + ')' : ''}. Click to change.`); b.title = `Theme: ${pref} (press t)`; const l = $('#theme-label'); if (l) l.textContent = pref[0].toUpperCase() + pref.slice(1); }
   const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#0d1218' : '#f4f6f8');
 }
 export function cycleTheme() {
@@ -215,13 +216,15 @@ export async function loadState() {
     if (!localStorage.getItem('nv.compact') && sp['pref.compact']) { localStorage.setItem('nv.compact', sp['pref.compact']); document.documentElement.classList.toggle('compact', sp['pref.compact'] === '1'); }
   } catch {}
   const r = app.state.readiness;
-  const mb = $('#mode-badge'); mb.textContent = r.mode === 'demo' ? 'Demo data' : 'Live'; mb.classList.toggle('live', r.mode === 'live');
+  const mb = $('#mode-badge'); mb.textContent = r.mode === 'demo' ? 'Demo' : 'Live'; mb.classList.toggle('live', r.mode === 'live');
+  mb.title = r.mode === 'demo' ? 'Demo mode: Gmail, Sheets and websites are local stand-ins; every record is fictional. Nothing leaves this computer.' : 'Live mode: real Gmail (read-only) and Google Sheets.';
   const pc = app.state.pitch_counts || {};
   const attention = (pc.review || 0) + (pc.ready || 0) + (pc.error || 0) + (pc.uncertain || 0) + (pc.conflict || 0);
   const nc = $('#nav-inbox-count'); nc.hidden = !attention; nc.textContent = attention; nc.setAttribute('aria-label', attention + ' pitches need attention');
   const banner = $('#banner'); banner.replaceChildren();
-  if (r.mode === 'demo') banner.append(h('div', { class: 'banner info', role: 'note' }, icon('alert'), h('span', {}, h('b', {}, 'Demo mode. '), 'Gmail, Google Sheets and partner websites are local fixtures; every record is fictional and labelled “(demo)”. Nothing leaves this computer.')));
-  else if (!r.google.connected) banner.append(h('div', { class: 'banner', role: 'note' }, icon('alert'), h('span', {}, 'Google is not connected. Sourcing works locally; inbox import and sheet sync need ', h('a', { href: '#/settings' }, 'Settings → Google connection'), '.')));
+  // Demo mode is shown by the top-bar badge (details on hover); only an
+  // action the user must take gets a banner.
+  if (r.mode !== 'demo' && !r.google.connected) banner.append(h('div', { class: 'banner', role: 'note' }, icon('alert'), h('span', {}, 'Google isn\'t connected yet. ', h('a', { href: '#/settings' }, 'Connect it in Settings'), ' to receive pitches and write to your sheets.')));
   return app.state;
 }
 

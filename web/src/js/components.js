@@ -259,5 +259,5 @@ export function intakeStatus() {
   if (!a) return null;
   if (!a.enabled) return h('p', { class: 'status-line' }, h('span', { class: 'dot' }), 'Automatic intake is off', can('settings.manage') ? h('a', { href: '#/settings' }, 'Turn on') : null);
   return h('p', { class: 'status-line' }, h('span', { class: 'dot ' + (a.problem ? 'warn' : 'ok') }),
-    `Checking Gmail every ${a.every_minutes} min`, a.last_at ? h('span', { class: 'muted' }, ` · ${ago(a.last_at)}: ${a.last_result}`) : h('span', { class: 'muted' }, ' · first check shortly'));
+    `Checking Gmail every ${a.every_minutes} min`, h('span', { class: 'muted status-detail' }, a.last_at ? `${ago(a.last_at)}: ${a.last_result}` : 'first check shortly'));
 }
